@@ -1024,8 +1024,6 @@ export default function App() {
         </div>
       </div>
       {session && <AsistenteIA svcs={svcs} ins={ins} recs={recs} />}
-        </div>
-      </div>
     </div>
   )
 }
