@@ -9,7 +9,7 @@ const sb = createClient(
 )
 
 // ── TYPES ─────────────────────────────────────────────────────────────────────
-type Page = 'dashboard' | 'servicios' | 'insumos' | 'packs' | 'rentabilidad' | 'registro'
+type Page = 'dashboard' | 'servicios' | 'insumos' | 'packs' | 'rentabilidad' | 'registro' | 'multiagentes'
 
 interface Svc {
   id: number; nombre: string; categoria: string; pvp: number
@@ -127,6 +127,7 @@ const NAV: { id: Page; icon: string; label: string; section: string }[] = [
   { id: 'packs', icon: '🎁', label: 'Crear Packs', section: 'VENTAS' },
   { id: 'rentabilidad', icon: '💰', label: 'Rentabilidad', section: 'ANÁLISIS' },
   { id: 'registro', icon: '📅', label: 'Registro Mensual', section: '' },
+  { id: 'multiagentes', icon: '🤖', label: 'Multi-Agentes IA', section: '' },
 ]
 
 function Sidebar({ page, setPage, onLogout, email }: { page: Page; setPage: (p: Page) => void; onLogout: () => void; email: string }) {
@@ -658,6 +659,216 @@ function Rentabilidad({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
   )
 }
 
+// ── MULTI-AGENTES IA ──────────────────────────────────────────────────────────
+function MultiAgentes({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
+  type Estado = 'idle' | 'contador' | 'administrador' | 'gerente' | 'listo'
+  const [estado, setEstado] = React.useState<Estado>('idle')
+  const [informes, setInformes] = React.useState({ contador: '', administrador: '', gerente: '' })
+  const [error, setError] = React.useState('')
+  const [expandido, setExpandido] = React.useState({ contador: true, administrador: true, gerente: true })
+
+  function buildCtx() {
+    const t = tasaMin(svcs)
+    const totalMes = svcs.reduce((s, x) => s + x.pvp * x.frec_mes, 0)
+    const cats = [...new Set(svcs.map(s => s.categoria))]
+    const resCats = cats.map(cat => {
+      const cs = svcs.filter(s => s.categoria === cat)
+      const ing = cs.reduce((s, x) => s + x.pvp * x.frec_mes, 0)
+      return `  ${cat}: ${cs.length} servicios, $${ing.toFixed(0)}/mes`
+    }).join('\n')
+    const detalle = svcs.map(s => {
+      const ci = costoIns(s.id, ins, recs)
+      const cf = s.tiempo_min * t
+      const ct = ci + cf
+      const mg = margen(s.pvp, ct)
+      return `${s.nombre} | Cat:${s.categoria} | PVP:$${s.pvp} | Costo:$${ct.toFixed(2)} | Margen:${(mg*100).toFixed(1)}% | ${s.frec_mes}x/mes | Ing.mes:$${(s.pvp*s.frec_mes).toFixed(0)}`
+    }).join('\n')
+    return `COSMOPOLITAN PELUQUERÍAS · ECUADOR
+Servicios: ${svcs.length} | Insumos: ${ins.length} | Costo Fijo Mensual: $${CF.toFixed(2)}
+Ingreso potencial mensual: $${totalMes.toFixed(2)}
+
+INGRESOS POR CATEGORÍA:
+${resCats}
+
+DETALLE DE SERVICIOS (nombre | categoría | PVP | costo total | margen | frecuencia | ingreso/mes):
+${detalle}`
+  }
+
+  async function llamar(rol: string, instruccion: string, contexto: string): Promise<string> {
+    const r = await fetch('/api/agente', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rol, instruccion, contexto }),
+    })
+    const d = await r.json()
+    if (d.error) throw new Error(d.error)
+    return d.respuesta || ''
+  }
+
+  async function generar() {
+    setError(''); setInformes({ contador: '', administrador: '', gerente: '' })
+    const ctx = buildCtx()
+    try {
+      setEstado('contador')
+      const rC = await llamar(
+        'CONTADOR',
+        'Genera un informe financiero completo con: 1) Ingresos potenciales por categoría (tabla), 2) Top 5 servicios más rentables (por margen %), 3) Servicios con margen bajo (menos del 30%), 4) Resumen de costos fijos vs variables, 5) Alertas financieras urgentes.',
+        ctx
+      )
+      setInformes(p => ({ ...p, contador: rC }))
+
+      setEstado('administrador')
+      const rA = await llamar(
+        'ADMINISTRADOR OPERATIVO',
+        'Con base en el informe financiero del contador, genera: 1) Análisis de capacidad operativa (tiempo por categoría), 2) Servicios a potenciar urgentemente (alta rentabilidad + demanda), 3) Servicios a revisar o rediseñar, 4) Recomendaciones de ajuste de precios, 5) Plan de acción operativo para este mes.',
+        `${ctx}\n\n=== INFORME DEL CONTADOR ===\n${rC}`
+      )
+      setInformes(p => ({ ...p, administrador: rA }))
+
+      setEstado('gerente')
+      const rG = await llamar(
+        'GERENTE GENERAL',
+        'Con los informes del contador y administrador, toma decisiones ejecutivas: 1) Las 3 decisiones estratégicas más urgentes para este mes, 2) Objetivos de crecimiento a 3 meses con cifras concretas, 3) KPIs semanales clave a monitorear, 4) Principales riesgos y plan de mitigación, 5) Veredicto ejecutivo: ¿el negocio va bien? ¿qué cambia hoy?',
+        `${ctx}\n\n=== INFORME CONTADOR ===\n${rC}\n\n=== INFORME ADMINISTRADOR ===\n${rA}`
+      )
+      setInformes(p => ({ ...p, gerente: rG }))
+      setEstado('listo')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error desconocido')
+      setEstado('idle')
+    }
+  }
+
+  function exportarPDF() {
+    const w = window.open('', '_blank')
+    if (!w) return
+    w.document.write(`<html><head><title>Análisis Multi-Agente · Cosmopolitan</title>
+<style>body{font-family:Arial,sans-serif;padding:30px;color:#1a1a2e;max-width:900px;margin:0 auto}
+h1{color:#0f3460;border-bottom:3px solid #d4af37;padding-bottom:12px}
+h2{margin-top:32px;padding:10px 16px;border-radius:8px;font-size:15px}
+.cnt{background:#ecfdf5;color:#065f46}.adm{background:#eff6ff;color:#1e40af}.ger{background:#fffbeb;color:#92400e}
+pre{white-space:pre-wrap;font-family:Arial;line-height:1.7;font-size:13px;margin:0;padding:16px;background:#f9fafb;border-radius:6px}
+.footer{margin-top:40px;color:#9ca3af;font-size:11px;text-align:center}</style></head>
+<body><h1>🤖 Análisis Estratégico Multi-Agente</h1>
+<p style="color:#6b7280;font-size:13px">Cosmopolitan Peluquerías · Ecuador · ${new Date().toLocaleDateString('es-EC', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+<h2 class="cnt">📊 CONTADOR — Análisis Financiero</h2><pre>${informes.contador}</pre>
+<h2 class="adm">⚙️ ADMINISTRADOR — Gestión Operativa</h2><pre>${informes.administrador}</pre>
+<h2 class="ger">👔 GERENTE GENERAL — Decisiones Estratégicas</h2><pre>${informes.gerente}</pre>
+<div class="footer">Generado por Cosmo IA · NS Consultoría Digital · cosmopolitan-app.vercel.app</div>
+</body></html>`)
+    w.document.close(); w.print()
+  }
+
+  const agentes = [
+    { key: 'contador' as const, label: 'Contador', emoji: '📊', color: '#10b981', bg: '#ecfdf5', desc: 'Análisis financiero y contable' },
+    { key: 'administrador' as const, label: 'Administrador', emoji: '⚙️', color: '#3b82f6', bg: '#eff6ff', desc: 'Gestión operativa y precios' },
+    { key: 'gerente' as const, label: 'Gerente General', emoji: '👔', color: '#d4af37', bg: '#fffbeb', desc: 'Decisiones estratégicas ejecutivas' },
+  ]
+  const pasos: Estado[] = ['contador', 'administrador', 'gerente', 'listo']
+  const etiqueta: Record<Estado, string> = {
+    idle: '', contador: '📊 Contador analizando finanzas...', administrador: '⚙️ Administrador revisando operaciones...', gerente: '👔 Gerente tomando decisiones estratégicas...', listo: '✅ Análisis completo — 3 agentes listos',
+  }
+
+  return (
+    <div style={{ padding: 24, maxWidth: 860, margin: '0 auto' }}>
+      {/* Header card */}
+      <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a1a2e', margin: '0 0 4px' }}>🤖 Flujo Multi-Agente IA</h2>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>Tres agentes IA trabajan en cadena con los datos reales de Cosmopolitan</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {estado === 'listo' && (
+              <button onClick={exportarPDF} style={{ padding: '8px 14px', background: '#0f3460', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>📄 PDF</button>
+            )}
+            <button onClick={generar} disabled={estado !== 'idle' && estado !== 'listo'}
+              style={{ padding: '8px 20px', background: (estado === 'idle' || estado === 'listo') ? '#d4af37' : '#9ca3af', color: 'white', border: 'none', borderRadius: 8, cursor: (estado === 'idle' || estado === 'listo') ? 'pointer' : 'not-allowed', fontSize: 13, fontWeight: 700 }}>
+              {estado === 'idle' ? '▶ Generar Análisis' : estado === 'listo' ? '🔄 Regenerar' : '⏳ Procesando...'}
+            </button>
+          </div>
+        </div>
+
+        {/* Pipeline visual */}
+        {estado !== 'idle' && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+              {agentes.map((a, i) => {
+                const done = informes[a.key] !== ''
+                const active = estado === a.key
+                return (
+                  <React.Fragment key={a.key}>
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: done ? a.color : active ? a.color : '#e5e7eb', color: done || active ? 'white' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 6px', fontSize: 18, boxShadow: active ? `0 0 0 4px ${a.color}33` : 'none', transition: 'all .3s' }}>
+                        {done ? '✓' : a.emoji}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: done ? a.color : active ? a.color : '#9ca3af' }}>{a.label}</div>
+                      <div style={{ fontSize: 10, color: '#9ca3af' }}>{a.desc}</div>
+                    </div>
+                    {i < 2 && <div style={{ width: 40, height: 2, background: informes[agentes[i+1].key] !== '' ? '#10b981' : '#e5e7eb', flexShrink: 0, transition: 'background .5s' }} />}
+                  </React.Fragment>
+                )
+              })}
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 10, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>{etiqueta[estado]}</div>
+          </div>
+        )}
+        {error && <div style={{ marginTop: 12, padding: 10, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>❌ {error}</div>}
+      </div>
+
+      {/* Agent report cards */}
+      {agentes.map(a => {
+        const texto = informes[a.key]
+        const isActive = estado === a.key
+        if (!texto && !isActive) return null
+        const exp = expandido[a.key]
+        return (
+          <div key={a.key} style={{ background: 'white', borderRadius: 12, marginBottom: 14, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'hidden', border: `2px solid ${isActive ? a.color : 'transparent'}`, transition: 'border .3s' }}>
+            <div onClick={() => setExpandido(p => ({ ...p, [a.key]: !p[a.key] }))}
+              style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: isActive ? a.bg : '#fafafa', borderBottom: exp ? '1px solid #f3f4f6' : 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 9, background: a.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19 }}>{a.emoji}</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1a2e' }}>{a.label}</div>
+                  <div style={{ fontSize: 11, color: '#6b7280' }}>{a.desc}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {isActive && !texto && <span style={{ fontSize: 11, color: a.color, fontWeight: 600 }}>Analizando…</span>}
+                {texto && <span style={{ fontSize: 11, color: '#10b981', fontWeight: 600 }}>✓ Listo</span>}
+                <span style={{ color: '#9ca3af' }}>{exp ? '▲' : '▼'}</span>
+              </div>
+            </div>
+            {exp && (
+              <div style={{ padding: 18 }}>
+                {isActive && !texto
+                  ? <div style={{ textAlign: 'center', padding: '28px 0', color: '#9ca3af' }}><div style={{ fontSize: 28, marginBottom: 8 }}>⏳</div><div style={{ fontSize: 13 }}>Procesando…</div></div>
+                  : <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.75, color: '#374151', margin: 0 }}>{texto}</pre>
+                }
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Idle state */}
+      {estado === 'idle' && (
+        <div style={{ textAlign: 'center', padding: '48px 24px', background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+          <div style={{ fontSize: 52, marginBottom: 14 }}>🤖</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginBottom: 6 }}>Análisis estratégico automático en cadena</div>
+          <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 420, margin: '0 auto', lineHeight: 1.6 }}>
+            El <strong>Contador</strong> analiza finanzas → el <strong>Administrador</strong> propone acciones → el <strong>Gerente</strong> toma decisiones.<br />
+            Cada agente recibe el informe del anterior para dar una recomendación más inteligente.
+          </div>
+          <button onClick={generar} style={{ marginTop: 20, padding: '11px 28px', background: '#d4af37', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            ▶ Generar Análisis Completo
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── ASISTENTE IA ─────────────────────────────────────────────────────────────
 interface MsgIA { role: 'user' | 'assistant'; content: string }
 
@@ -946,6 +1157,7 @@ const PAGE_INFO: Record<Page, { t: string; s: string }> = {
   packs: { t: 'Crear Packs — Venta Cruzada', s: 'Combina servicios y aumenta el ticket promedio' },
   rentabilidad: { t: 'Análisis de Rentabilidad', s: 'KPIs, alertas y ranking por categoría' },
   registro: { t: 'Registro Mensual', s: 'Ventas reales vs proyectado · Exportar reporte' },
+  multiagentes: { t: 'Análisis Multi-Agente IA', s: 'Contador → Administrador → Gerente · Flujo estratégico automático' },
 }
 
 export default function App() {
@@ -1019,6 +1231,7 @@ export default function App() {
               {page === 'packs' && <Packs svcs={svcs} ins={ins} recs={recs} />}
               {page === 'rentabilidad' && <Rentabilidad svcs={svcs} ins={ins} recs={recs} />}
               {page === 'registro' && <RegistroMensual svcs={svcs} />}
+              {page === 'multiagentes' && <MultiAgentes svcs={svcs} ins={ins} recs={recs} />}
             </>
           )}
         </div>
