@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { createClient, type Session } from '@supabase/supabase-js'
 
 const sb = createClient(
@@ -658,6 +658,142 @@ function Rentabilidad({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
   )
 }
 
+// ── ASISTENTE IA ─────────────────────────────────────────────────────────────
+interface MsgIA { role: 'user' | 'assistant'; content: string }
+
+function AsistenteIA({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
+  const [open, setOpen] = useState(false)
+  const [msgs, setMsgs] = useState<MsgIA[]>([{ role: 'assistant', content: '¡Hola! Soy **Cosmo IA** 🤖, tu asistente de negocios. Puedo analizar los datos de Cosmopolitan y ayudarte a tomar mejores decisiones. ¿En qué te puedo ayudar hoy?' }])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const endRef = React.useRef<HTMLDivElement>(null)
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
+
+  function buildContexto() {
+    const t = tasaMin(svcs)
+    const computed = svcs.map(s => {
+      const ci = costoIns(s.id, ins, recs), cf = s.tiempo_min * t, ct = ci + cf, m = margen(s.pvp, ct)
+      return { ...s, ci, cf, ct, m, ingMes: s.pvp * s.sm }
+    })
+    const totalIng = computed.reduce((s, r) => s + r.ingMes, 0)
+    const conPvp = computed.filter(s => s.pvp > 0)
+    const avgMg = conPvp.length > 0 ? conPvp.reduce((s, r) => s + r.m, 0) / conPvp.length : 0
+    const top5 = [...conPvp].sort((a, b) => b.m - a.m).slice(0, 5)
+    const bajos = conPvp.filter(s => s.m < 0.1)
+    const cats = [...new Set(svcs.map(s => s.categoria))]
+    const resumenCats = cats.map(c => {
+      const cs = computed.filter(s => s.categoria === c)
+      const avgM = cs.length > 0 ? cs.reduce((s, r) => s + r.m, 0) / cs.length : 0
+      return `  - ${c}: ${cs.length} servicios, margen promedio ${fp(avgM)}, ingreso proyectado ${fint(cs.reduce((s, r) => s + r.ingMes, 0))}/mes`
+    }).join('\n')
+
+    return `RESUMEN GENERAL:
+- Total servicios activos: ${svcs.length}
+- Total insumos registrados: ${ins.length}
+- Ingreso potencial mensual: ${fint(totalIng)}
+- Costos fijos mensuales: $9,110.07
+- Costo variable mensual estimado: $9,379.37
+- Margen promedio general: ${fp(avgMg)}
+- Costo por minuto de operación: $${t.toFixed(4)}
+
+CATEGORÍAS:
+${resumenCats}
+
+TOP 5 SERVICIOS MÁS RENTABLES:
+${top5.map(s => `  - ${s.nombre} (${s.categoria}): PVP ${f$(s.pvp)}, Costo ${f$(s.ct)}, Margen ${fp(s.m)}`).join('\n')}
+
+SERVICIOS EN PÉRDIDA O RIESGO (margen < 10%):
+${bajos.length > 0 ? bajos.map(s => `  - ${s.nombre}: PVP ${f$(s.pvp)}, Costo ${f$(s.ct)}, Margen ${fp(s.m)}`).join('\n') : 'Ninguno'}
+
+TODOS LOS SERVICIOS:
+${computed.map(s => `  - ${s.nombre} | ${s.categoria} | PVP: ${f$(s.pvp)} | Costo: ${f$(s.ct)} | Margen: ${fp(s.m)} | Proyectado: ${s.sm} veces/mes`).join('\n')}`
+  }
+
+  async function enviar() {
+    if (!input.trim() || loading) return
+    const userMsg: MsgIA = { role: 'user', content: input.trim() }
+    const newMsgs = [...msgs, userMsg]
+    setMsgs(newMsgs); setInput(''); setLoading(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMsgs, contexto: buildContexto() })
+      })
+      const data = await res.json()
+      setMsgs(prev => [...prev, { role: 'assistant', content: data.respuesta || data.error || 'Error' }])
+    } catch {
+      setMsgs(prev => [...prev, { role: 'assistant', content: '❌ Error de conexión. Intenta de nuevo.' }])
+    }
+    setLoading(false)
+  }
+
+  const sugerencias = ['¿Qué servicio es el más rentable?', '¿Qué servicios están en pérdida?', '¿Cómo puedo mejorar el margen de Depilación?', '¿Cuál es mi ingreso potencial mensual?']
+
+  return (
+    <>
+      {/* Botón flotante */}
+      <button onClick={() => setOpen(!open)}
+        style={{ position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: '50%', background: open ? '#dc2626' : '#0f3460', color: 'white', border: 'none', fontSize: 24, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,.3)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s' }}>
+        {open ? '✕' : '🤖'}
+      </button>
+
+      {/* Panel de chat */}
+      {open && (
+        <div style={{ position: 'fixed', bottom: 90, right: 24, width: 380, height: 520, background: 'white', borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,.2)', zIndex: 998, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Header */}
+          <div style={{ background: '#1a1a2e', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#0f3460', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🤖</div>
+            <div>
+              <div style={{ color: '#d4af37', fontWeight: 700, fontSize: 14 }}>Cosmo IA</div>
+              <div style={{ color: '#9ca3af', fontSize: 11 }}>Asistente de negocios · Cosmopolitan</div>
+            </div>
+            <div style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+          </div>
+
+          {/* Mensajes */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {msgs.map((m, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                <div style={{ maxWidth: '82%', padding: '9px 13px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', background: m.role === 'user' ? '#0f3460' : '#f3f4f6', color: m.role === 'user' ? 'white' : '#1a1a2e', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                  {m.content.replace(/\*\*(.*?)\*\*/g, '$1')}
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <div style={{ padding: '9px 13px', borderRadius: '14px 14px 14px 4px', background: '#f3f4f6', color: '#6b7280', fontSize: 13 }}>Analizando datos... ⏳</div>
+              </div>
+            )}
+            <div ref={endRef} />
+          </div>
+
+          {/* Sugerencias (solo si pocos mensajes) */}
+          {msgs.length <= 1 && (
+            <div style={{ padding: '0 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {sugerencias.map(s => (
+                <button key={s} onClick={() => { setInput(s); }} style={{ padding: '5px 10px', background: '#e0e7ff', color: '#3730a3', border: 'none', borderRadius: 20, fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>{s}</button>
+              ))}
+            </div>
+          )}
+
+          {/* Input */}
+          <div style={{ padding: '10px 14px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 8 }}>
+            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && enviar()}
+              placeholder="Pregunta sobre el negocio..." disabled={loading}
+              style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }} />
+            <button onClick={enviar} disabled={loading || !input.trim()}
+              style={{ padding: '8px 14px', background: input.trim() && !loading ? '#d4af37' : '#e5e7eb', color: '#1a1a2e', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+              ➤
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── REGISTRO MENSUAL ──────────────────────────────────────────────────────────
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
@@ -885,6 +1021,9 @@ export default function App() {
               {page === 'registro' && <RegistroMensual svcs={svcs} />}
             </>
           )}
+        </div>
+      </div>
+      {session && <AsistenteIA svcs={svcs} ins={ins} recs={recs} />}
         </div>
       </div>
     </div>
