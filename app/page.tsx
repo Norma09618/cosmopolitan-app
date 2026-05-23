@@ -9,7 +9,7 @@ const sb = createClient(
 )
 
 // ── TYPES ─────────────────────────────────────────────────────────────────────
-type Page = 'dashboard' | 'servicios' | 'insumos' | 'packs' | 'rentabilidad'
+type Page = 'dashboard' | 'servicios' | 'insumos' | 'packs' | 'rentabilidad' | 'registro'
 
 interface Svc {
   id: number; nombre: string; categoria: string; pvp: number
@@ -20,6 +20,7 @@ interface Ins {
   unidad: string; costo_compra: number; contenido: number; stock_actual: number
 }
 interface Rec { servicio_id: number; insumo_id: number; cantidad: number }
+interface VentaMes { id: number; servicio_id: number; mes: number; anio: number; cantidad_real: number }
 
 // ── COST ENGINE ───────────────────────────────────────────────────────────────
 const CF = 9110.07
@@ -125,6 +126,7 @@ const NAV: { id: Page; icon: string; label: string; section: string }[] = [
   { id: 'insumos', icon: '🧴', label: 'Insumos', section: '' },
   { id: 'packs', icon: '🎁', label: 'Crear Packs', section: 'VENTAS' },
   { id: 'rentabilidad', icon: '💰', label: 'Rentabilidad', section: 'ANÁLISIS' },
+  { id: 'registro', icon: '📅', label: 'Registro Mensual', section: '' },
 ]
 
 function Sidebar({ page, setPage, onLogout, email }: { page: Page; setPage: (p: Page) => void; onLogout: () => void; email: string }) {
@@ -656,6 +658,150 @@ function Rentabilidad({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
   )
 }
 
+// ── REGISTRO MENSUAL ──────────────────────────────────────────────────────────
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+
+function RegistroMensual({ svcs }: { svcs: Svc[] }) {
+  const now = new Date()
+  const [mes, setMes] = useState(now.getMonth() + 1)
+  const [anio, setAnio] = useState(now.getFullYear())
+  const [cantidades, setCantidades] = useState<Record<number, number>>({})
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+  const cats = [...new Set(svcs.map(s => s.categoria))].sort()
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await sb.from('ventas_mes').select('*').eq('mes', mes).eq('anio', anio)
+      const map: Record<number, number> = {}
+      ;(data || []).forEach((v: VentaMes) => { map[v.servicio_id] = v.cantidad_real })
+      setCantidades(map)
+    }
+    load()
+  }, [mes, anio])
+
+  async function guardar() {
+    setSaving(true)
+    const rows = svcs.map(s => ({ servicio_id: s.id, mes, anio, cantidad_real: cantidades[s.id] || 0 }))
+    const { error } = await sb.from('ventas_mes').upsert(rows, { onConflict: 'servicio_id,mes,anio' })
+    setSaving(false)
+    if (error) { setMsg('Error: ' + error.message); return }
+    setMsg('✅ Guardado correctamente')
+    setTimeout(() => setMsg(''), 3000)
+  }
+
+  const computed = svcs.map(s => {
+    const cantReal = cantidades[s.id] || 0
+    const ingProy = s.pvp * s.sm
+    const ingReal = s.pvp * cantReal
+    return { ...s, cantReal, ingProy, ingReal, diff: ingReal - ingProy }
+  })
+  const totalProy = computed.reduce((s, r) => s + r.ingProy, 0)
+  const totalReal = computed.reduce((s, r) => s + r.ingReal, 0)
+  const cumpl = totalProy > 0 ? totalReal / totalProy : 0
+
+  function exportarReporte() {
+    const win = window.open('', '_blank')
+    if (!win) return
+    const mn = MESES[mes - 1]
+    const realColor = totalReal >= totalProy ? '#059669' : '#dc2626'
+    const cumplColor = cumpl >= 0.9 ? '#059669' : cumpl >= 0.7 ? '#d97706' : '#dc2626'
+    const tablas = cats.map(cat => {
+      const filas = computed.filter(s => s.categoria === cat)
+      const cp = filas.reduce((s, r) => s + r.ingProy, 0)
+      const cr = filas.reduce((s, r) => s + r.ingReal, 0)
+      const trs = filas.map(s => {
+        const dc = s.diff >= 0 ? '#059669' : '#dc2626'
+        const rc = s.ingReal >= s.ingProy ? '#059669' : '#6b7280'
+        return `<tr><td>${s.nombre}</td><td>${f$(s.pvp)}</td><td style="color:#6b7280">${s.sm}</td><td style="font-weight:700">${s.cantReal}</td><td>${fint(s.ingProy)}</td><td style="color:${rc};font-weight:600">${fint(s.ingReal)}</td><td style="color:${dc};font-weight:700">${s.diff >= 0 ? '+' : ''}${fint(s.diff)}</td></tr>`
+      }).join('')
+      const pct = fp(cp > 0 ? cr / cp : 0)
+      return `<div class="ch">${cat.toUpperCase()} &nbsp;·&nbsp; Real: ${fint(cr)} / Proy: ${fint(cp)} &nbsp;(${pct})</div><table><thead><tr><th>Servicio</th><th>PVP</th><th>Proy.</th><th>Real</th><th>Ing.Proy.</th><th>Ing.Real</th><th>Diferencia</th></tr></thead><tbody>${trs}</tbody></table>`
+    }).join('')
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reporte ${mn} ${anio}</title><style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:24px;color:#1a1a2e;font-size:12px}.hdr{background:#1a1a2e;color:white;padding:16px 20px;border-radius:8px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}.kpi{border:1px solid #e5e7eb;padding:12px;border-radius:8px}.kl{font-size:10px;color:#6b7280;margin-bottom:4px}.kv{font-size:18px;font-weight:800}table{width:100%;border-collapse:collapse;margin-bottom:14px}th{background:#0f3460;color:#d4af37;padding:6px 10px;font-size:10px;text-align:left}td{padding:5px 10px;border-bottom:1px solid #f3f4f6;font-size:11px}.ch{background:#1a1a2e;color:#d4af37;padding:7px 12px;font-size:10px;font-weight:700;margin-top:10px}.ft{text-align:center;color:#9ca3af;font-size:10px;margin-top:20px;padding-top:10px;border-top:1px solid #e5e7eb}@media print{button{display:none}}</style></head><body><div class="hdr"><div><div style="color:#d4af37;font-size:18px;font-weight:800">COSMOPOLITAN PELUQUERÍAS</div><div style="color:#9ca3af;margin-top:4px">Reporte Mensual — ${mn} ${anio}</div></div><div style="text-align:right"><div style="color:#d4af37;font-size:11px">NS Consultoría Digital</div><div style="color:#6b7280;font-size:10px">Sistema de Gestión v2.0</div></div></div><div class="kpis"><div class="kpi"><div class="kl">Ingreso Proyectado</div><div class="kv">${fint(totalProy)}</div></div><div class="kpi"><div class="kl">Ingreso Real</div><div class="kv" style="color:${realColor}">${fint(totalReal)}</div></div><div class="kpi"><div class="kl">Cumplimiento</div><div class="kv" style="color:${cumplColor}">${fp(cumpl)}</div></div><div class="kpi"><div class="kl">Diferencia</div><div class="kv" style="color:${realColor}">${totalReal >= totalProy ? '+' : ''}${fint(totalReal - totalProy)}</div></div></div>${tablas}<div class="ft">NS Consultoría Digital · Sistema de Gestión Cosmopolitan · ${mn} ${anio}</div><script>window.onload=function(){window.print()}<\/script></body></html>`
+    win.document.write(html)
+    win.document.close()
+  }
+
+  const th = { background: '#0f3460', color: '#d4af37', padding: '8px 10px', fontSize: 11, fontWeight: 600 as const, textAlign: 'left' as const }
+  const td = { padding: '7px 10px', fontSize: 12, borderBottom: '1px solid #f3f4f6' }
+
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ background: 'white', borderRadius: 10, padding: '10px 16px', boxShadow: '0 1px 4px rgba(0,0,0,.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Periodo:</span>
+          <select value={mes} onChange={e => setMes(parseInt(e.target.value))}
+            style={{ border: '1px solid #e5e7eb', padding: '6px 10px', borderRadius: 7, fontSize: 12.5, outline: 'none' }}>
+            {MESES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <select value={anio} onChange={e => setAnio(parseInt(e.target.value))}
+            style={{ border: '1px solid #e5e7eb', padding: '6px 10px', borderRadius: 7, fontSize: 12.5, outline: 'none' }}>
+            {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+        <button onClick={guardar} disabled={saving}
+          style={{ padding: '9px 18px', background: '#0f3460', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          {saving ? 'Guardando...' : '💾 Guardar registro'}
+        </button>
+        <button onClick={exportarReporte}
+          style={{ padding: '9px 18px', background: '#d4af37', color: '#1a1a2e', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          📄 Exportar Reporte PDF
+        </button>
+        {msg && <span style={{ fontSize: 12, color: msg.startsWith('✅') ? '#059669' : '#dc2626', fontWeight: 600 }}>{msg}</span>}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+        {[
+          { label: 'Ingreso Proyectado', val: fint(totalProy), color: '#1a1a2e' },
+          { label: 'Ingreso Real', val: fint(totalReal), color: totalReal >= totalProy ? '#059669' : '#dc2626' },
+          { label: 'Cumplimiento', val: fp(cumpl), color: cumpl >= 0.9 ? '#059669' : cumpl >= 0.7 ? '#d97706' : '#dc2626' },
+          { label: 'Diferencia', val: `${totalReal >= totalProy ? '+' : ''}${fint(totalReal - totalProy)}`, color: totalReal >= totalProy ? '#059669' : '#dc2626' },
+        ].map((k, i) => (
+          <div key={i} style={{ background: 'white', borderRadius: 10, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+            <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 6 }}>{k.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: k.color }}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {cats.map(cat => {
+        const rows = computed.filter(s => s.categoria === cat)
+        const catProy = rows.reduce((s, r) => s + r.ingProy, 0)
+        const catReal = rows.reduce((s, r) => s + r.ingReal, 0)
+        return (
+          <div key={cat} style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden', marginBottom: 12 }}>
+            <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '8px 16px', fontSize: 11, fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
+              <span>{cat.toUpperCase()}</span>
+              <span>Real: {fint(catReal)} / Proy: {fint(catProy)} · {fp(catProy > 0 ? catReal / catProy : 0)}</span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>{['Servicio','PVP','Cant.Proy.','Cant.Real','Ing.Proyectado','Ing.Real','Diferencia'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.map(s => (
+                  <tr key={s.id}>
+                    <td style={{ ...td, fontWeight: 500 }}>{s.nombre}</td>
+                    <td style={td}>{f$(s.pvp)}</td>
+                    <td style={{ ...td, color: '#6b7280' }}>{s.sm}</td>
+                    <td style={td}>
+                      <input type="number" min={0} value={cantidades[s.id] ?? ''}
+                        onChange={e => setCantidades(prev => ({ ...prev, [s.id]: parseInt(e.target.value) || 0 }))}
+                        style={{ width: 70, border: '1px solid #e5e7eb', padding: '4px 7px', borderRadius: 6, fontSize: 12, outline: 'none' }} />
+                    </td>
+                    <td style={td}>{fint(s.ingProy)}</td>
+                    <td style={{ ...td, fontWeight: 600, color: s.ingReal >= s.ingProy ? '#059669' : '#6b7280' }}>{fint(s.ingReal)}</td>
+                    <td style={{ ...td, fontWeight: 600, color: s.diff >= 0 ? '#059669' : '#dc2626' }}>{s.diff >= 0 ? '+' : ''}{fint(s.diff)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 const PAGE_INFO: Record<Page, { t: string; s: string }> = {
   dashboard: { t: 'Dashboard', s: 'Vista general del negocio · 2026' },
@@ -663,6 +809,7 @@ const PAGE_INFO: Record<Page, { t: string; s: string }> = {
   insumos: { t: 'Insumos y Materias Primas', s: 'Gestión de inventario y costos' },
   packs: { t: 'Crear Packs — Venta Cruzada', s: 'Combina servicios y aumenta el ticket promedio' },
   rentabilidad: { t: 'Análisis de Rentabilidad', s: 'KPIs, alertas y ranking por categoría' },
+  registro: { t: 'Registro Mensual', s: 'Ventas reales vs proyectado · Exportar reporte' },
 }
 
 export default function App() {
@@ -735,6 +882,7 @@ export default function App() {
               {page === 'insumos' && <Insumos ins={ins} setIns={setIns} />}
               {page === 'packs' && <Packs svcs={svcs} ins={ins} recs={recs} />}
               {page === 'rentabilidad' && <Rentabilidad svcs={svcs} ins={ins} recs={recs} />}
+              {page === 'registro' && <RegistroMensual svcs={svcs} />}
             </>
           )}
         </div>
