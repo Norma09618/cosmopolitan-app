@@ -795,11 +795,11 @@ Objetivos de marketing: ${mkt.objetivos}`
 
   async function generar() {
     setError('')
+    setEstado('contador')
     setInformes({ contador: '', administrador: '', gerente: '', marketing: '', contenido: '', publicidad: '' })
     const ctx = buildCtx()
     const mktCtx = buildMktCtx()
     try {
-      setEstado('contador')
       const rC = await llamar('CONTADOR',
         'Genera un informe financiero con: 1) Tabla de ingresos por categoría (con % del total y margen promedio), 2) Top 5 servicios más rentables, 3) Servicios con margen bajo (<30%), 4) Balance costos fijos vs variables, 5) Alertas urgentes.',
         ctx)
@@ -851,40 +851,40 @@ Objetivos de marketing: ${mkt.objetivos}`
       contenido ? `<div class="sec ${cls}"><div class="sec-head"><span class="emoji">${emoji}</span><div><h2>${titulo}</h2></div></div><div class="body">${mdToHtml(contenido)}</div></div>` : ''
     w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Análisis Multi-Agente · Cosmopolitan</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a1a2e;padding:32px 16px}
 .page{max-width:900px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)}
-.cover{background:linear-gradient(135deg,#1a1a2e 0%,#0f3460 100%);padding:40px;color:white}
-.cover h1{font-size:26px;font-weight:800;letter-spacing:.02em;margin-bottom:6px}
-.cover .sub{color:#d4af37;font-size:13px;font-weight:600;margin-bottom:4px}
-.cover .fecha{color:rgba(255,255,255,.5);font-size:11px}
-.gold-bar{height:4px;background:linear-gradient(90deg,#d4af37,#f5d98b,#d4af37)}
+.cover{background:#0f3460!important;padding:40px;color:white!important}
+.cover h1{font-size:26px;font-weight:800;letter-spacing:.02em;margin-bottom:6px;color:white!important}
+.cover .sub{color:#d4af37!important;font-size:13px;font-weight:600;margin-bottom:4px}
+.cover .fecha{color:rgba(255,255,255,.7)!important;font-size:11px}
+.gold-bar{height:6px;background:#d4af37!important}
 .content{padding:32px}
-.sec{border-radius:12px;margin-bottom:24px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)}
-.sec-head{display:flex;align-items:center;gap:14px;padding:16px 20px}
-.emoji{font-size:24px;width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.25);flex-shrink:0}
-.sec-head h2{font-size:15px;font-weight:700;margin:0}
-.body{padding:16px 20px 20px;background:white;font-size:13px;line-height:1.75}
-.cnt .sec-head{background:#059669;color:white}.cnt .emoji{background:rgba(255,255,255,.2)}
-.adm .sec-head{background:#2563eb;color:white}.adm .emoji{background:rgba(255,255,255,.2)}
-.ger .sec-head{background:#d97706;color:white}.ger .emoji{background:rgba(255,255,255,.2)}
-.mkt .sec-head{background:#7c3aed;color:white}.mkt .emoji{background:rgba(255,255,255,.2)}
-.con .sec-head{background:#0891b2;color:white}.con .emoji{background:rgba(255,255,255,.2)}
-.pub .sec-head{background:#be185d;color:white}.pub .emoji{background:rgba(255,255,255,.2)}
-.body h1{font-size:16px;color:#1a1a2e;margin:16px 0 6px;border-bottom:2px solid #e5e7eb;padding-bottom:4px}
-.body h2{font-size:14px;color:#374151;margin:14px 0 4px;font-weight:700}
-.body h3{font-size:13px;color:#6b7280;margin:10px 0 3px;font-weight:700}
-.body p{margin:4px 0}
-.body ul{margin:6px 0 6px 18px;padding:0}
-.body li{margin:3px 0}
-.body table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px}
-.body th{background:#f1f5f9;font-weight:700;padding:7px 10px;border:1px solid #e2e8f0;text-align:left}
-.body td{padding:6px 10px;border:1px solid #e2e8f0}
-.body tr:nth-child(even) td{background:#f9fafb}
-.body hr{border:none;border-top:1px solid #e5e7eb;margin:14px 0}
+.sec{border-radius:12px;margin-bottom:24px;overflow:hidden;border:1px solid #e5e7eb}
+.sec-head{display:flex;align-items:center;gap:14px;padding:14px 20px}
+.emoji{font-size:20px;width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.25)!important;flex-shrink:0}
+.sec-head h2{font-size:14px;font-weight:700;margin:0;color:white!important}
+.body{padding:16px 20px 20px;background:white!important;font-size:13px;line-height:1.75}
+.cnt .sec-head{background:#059669!important;color:white!important}
+.adm .sec-head{background:#2563eb!important;color:white!important}
+.ger .sec-head{background:#b45309!important;color:white!important}
+.mkt .sec-head{background:#7c3aed!important;color:white!important}
+.con .sec-head{background:#0891b2!important;color:white!important}
+.pub .sec-head{background:#be185d!important;color:white!important}
+.body h1{font-size:15px;color:#1a1a2e;margin:14px 0 5px;border-bottom:2px solid #e5e7eb;padding-bottom:4px}
+.body h2{font-size:13px;color:#374151;margin:12px 0 3px;font-weight:700}
+.body h3{font-size:12px;color:#6b7280;margin:8px 0 2px;font-weight:700}
+.body p{margin:3px 0}
+.body ul{margin:5px 0 5px 16px;padding:0}
+.body li{margin:2px 0}
+.body table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}
+.body th{background:#e2e8f0!important;font-weight:700;padding:6px 10px;border:1px solid #cbd5e1;text-align:left;color:#1e293b}
+.body td{padding:5px 10px;border:1px solid #e2e8f0}
+.body tr:nth-child(even) td{background:#f8fafc!important}
+.body hr{border:none;border-top:1px solid #e5e7eb;margin:12px 0}
 .body strong{font-weight:700;color:#111827}
-.footer{padding:20px 32px;background:#f8fafc;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af}
-@media print{body{background:white;padding:0}.page{box-shadow:none;border-radius:0}}
+.footer{padding:16px 32px;background:#f1f5f9!important;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:10px;color:#64748b}
+@media print{body{background:white!important;padding:0}.page{box-shadow:none!important;border-radius:0!important;max-width:100%}}
 </style></head><body>
 <div class="page">
 <div class="cover">
@@ -906,8 +906,9 @@ ${seccion('📣', 'ESPECIALISTA EN PUBLICIDAD', 'pub', informes.publicidad)}
   <span>cosmopolitan-app.vercel.app</span>
 </div>
 </div>
+<script>window.onload=function(){setTimeout(function(){window.print()},800)}</script>
 </body></html>`)
-    w.document.close(); setTimeout(() => w.print(), 500)
+    w.document.close()
   }
 
   const todosAgentes = [
