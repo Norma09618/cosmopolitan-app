@@ -659,13 +659,68 @@ function Rentabilidad({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
   )
 }
 
+// ── HELPERS MARKDOWN → HTML (para PDF) ───────────────────────────────────────
+function mdInline(t: string): string {
+  return t.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*(.+?)\*/g, '<em>$1</em>')
+}
+function mdToHtml(text: string): string {
+  const lines = text.split('\n')
+  let html = ''; let tableRows: string[] = []; let inTable = false; let inList = false
+  const flushTable = () => {
+    if (!inTable) return
+    html += `<table>${tableRows.join('')}</table>`
+    tableRows = []; inTable = false
+  }
+  const flushList = () => { if (inList) { html += '</ul>'; inList = false } }
+  for (const line of lines) {
+    const isTableRow = /^\s*\|/.test(line) && /\|\s*$/.test(line)
+    if (isTableRow) {
+      flushList()
+      inTable = true
+      const cells = line.split('|').map(c => c.trim()).filter(c => c !== '')
+      if (cells.every(c => /^[-: ]+$/.test(c))) continue
+      const tag = tableRows.length === 0 ? 'th' : 'td'
+      tableRows.push(`<tr>${cells.map(c => `<${tag}>${mdInline(c)}</${tag}>`).join('')}</tr>`)
+      continue
+    }
+    flushTable()
+    if (/^### /.test(line)) { flushList(); html += `<h3>${mdInline(line.slice(4))}</h3>`; continue }
+    if (/^## /.test(line))  { flushList(); html += `<h2>${mdInline(line.slice(3))}</h2>`; continue }
+    if (/^# /.test(line))   { flushList(); html += `<h1>${mdInline(line.slice(2))}</h1>`; continue }
+    if (/^[-*•] /.test(line)) {
+      if (!inList) { html += '<ul>'; inList = true }
+      html += `<li>${mdInline(line.slice(2))}</li>`; continue
+    }
+    if (/^\d+\. /.test(line)) {
+      if (!inList) { html += '<ul>'; inList = true }
+      html += `<li>${mdInline(line.replace(/^\d+\. /, ''))}</li>`; continue
+    }
+    flushList()
+    if (/^-{3,}$/.test(line.trim())) { html += '<hr>'; continue }
+    if (line.trim() === '') { html += '<br>'; continue }
+    html += `<p>${mdInline(line)}</p>`
+  }
+  flushTable(); flushList()
+  return html
+}
+
 // ── MULTI-AGENTES IA ──────────────────────────────────────────────────────────
+interface MktBase { avatar: string; tono: string; propuesta: string; redes: string; objetivos: string }
+
 function MultiAgentes({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
-  type Estado = 'idle' | 'contador' | 'administrador' | 'gerente' | 'listo'
+  type Estado = 'idle' | 'contador' | 'administrador' | 'gerente' | 'marketing' | 'contenido' | 'publicidad' | 'listo'
   const [estado, setEstado] = React.useState<Estado>('idle')
-  const [informes, setInformes] = React.useState({ contador: '', administrador: '', gerente: '' })
+  const [informes, setInformes] = React.useState({ contador: '', administrador: '', gerente: '', marketing: '', contenido: '', publicidad: '' })
   const [error, setError] = React.useState('')
-  const [expandido, setExpandido] = React.useState({ contador: true, administrador: true, gerente: true })
+  const [expandido, setExpandido] = React.useState({ contador: true, administrador: true, gerente: true, marketing: true, contenido: true, publicidad: true })
+  const [showMkt, setShowMkt] = React.useState(false)
+  const [mkt, setMkt] = React.useState<MktBase>({ avatar: '', tono: '', propuesta: '', redes: 'Instagram, Facebook, TikTok', objetivos: '' })
+
+  React.useEffect(() => {
+    try { const s = localStorage.getItem('cosmo_mkt'); if (s) setMkt(JSON.parse(s)) } catch {}
+  }, [])
+  function saveMkt(m: MktBase) { setMkt(m); try { localStorage.setItem('cosmo_mkt', JSON.stringify(m)) } catch {} }
+  const hasMkt = mkt.avatar.trim().length > 10 || mkt.objetivos.trim().length > 10
 
   function buildCtx() {
     const t = tasaMin(svcs)
@@ -690,8 +745,18 @@ Ingreso potencial mensual: $${totalMes.toFixed(2)}
 INGRESOS POR CATEGORÍA:
 ${resCats}
 
-DETALLE DE SERVICIOS (nombre | categoría | PVP | costo total | margen | frecuencia | ingreso/mes):
+DETALLE DE SERVICIOS:
 ${detalle}`
+  }
+
+  function buildMktCtx() {
+    if (!hasMkt) return ''
+    return `BASE DE CONOCIMIENTO MARKETING:
+Avatar del cliente ideal: ${mkt.avatar}
+Tono de voz de la marca: ${mkt.tono}
+Propuesta de valor única: ${mkt.propuesta}
+Redes sociales activas: ${mkt.redes}
+Objetivos de marketing: ${mkt.objetivos}`
   }
 
   async function llamar(rol: string, instruccion: string, contexto: string): Promise<string> {
@@ -706,32 +771,48 @@ ${detalle}`
   }
 
   async function generar() {
-    setError(''); setInformes({ contador: '', administrador: '', gerente: '' })
+    setError('')
+    setInformes({ contador: '', administrador: '', gerente: '', marketing: '', contenido: '', publicidad: '' })
     const ctx = buildCtx()
+    const mktCtx = buildMktCtx()
     try {
       setEstado('contador')
-      const rC = await llamar(
-        'CONTADOR',
-        'Genera un informe financiero completo con: 1) Ingresos potenciales por categoría (tabla), 2) Top 5 servicios más rentables (por margen %), 3) Servicios con margen bajo (menos del 30%), 4) Resumen de costos fijos vs variables, 5) Alertas financieras urgentes.',
-        ctx
-      )
+      const rC = await llamar('CONTADOR',
+        'Genera un informe financiero con: 1) Tabla de ingresos por categoría (con % del total y margen promedio), 2) Top 5 servicios más rentables, 3) Servicios con margen bajo (<30%), 4) Balance costos fijos vs variables, 5) Alertas urgentes.',
+        ctx)
       setInformes(p => ({ ...p, contador: rC }))
 
       setEstado('administrador')
-      const rA = await llamar(
-        'ADMINISTRADOR OPERATIVO',
-        'Con base en el informe financiero del contador, genera: 1) Análisis de capacidad operativa (tiempo por categoría), 2) Servicios a potenciar urgentemente (alta rentabilidad + demanda), 3) Servicios a revisar o rediseñar, 4) Recomendaciones de ajuste de precios, 5) Plan de acción operativo para este mes.',
-        `${ctx}\n\n=== INFORME DEL CONTADOR ===\n${rC}`
-      )
+      const rA = await llamar('ADMINISTRADOR OPERATIVO',
+        'Con el informe del contador, genera: 1) Análisis de capacidad (horas por categoría/mes), 2) Top 3 servicios a potenciar YA (alta rentabilidad+demanda), 3) Servicios a revisar o eliminar, 4) Ajustes de precio recomendados con cifras, 5) Plan de acción concreto para este mes.',
+        `${ctx}\n\n=== INFORME CONTADOR ===\n${rC}`)
       setInformes(p => ({ ...p, administrador: rA }))
 
       setEstado('gerente')
-      const rG = await llamar(
-        'GERENTE GENERAL',
-        'Con los informes del contador y administrador, toma decisiones ejecutivas: 1) Las 3 decisiones estratégicas más urgentes para este mes, 2) Objetivos de crecimiento a 3 meses con cifras concretas, 3) KPIs semanales clave a monitorear, 4) Principales riesgos y plan de mitigación, 5) Veredicto ejecutivo: ¿el negocio va bien? ¿qué cambia hoy?',
-        `${ctx}\n\n=== INFORME CONTADOR ===\n${rC}\n\n=== INFORME ADMINISTRADOR ===\n${rA}`
-      )
+      const rG = await llamar('GERENTE GENERAL',
+        'Con ambos informes, decide: 1) Las 3 decisiones estratégicas más urgentes (con cifras), 2) Objetivos a 3 meses medibles, 3) KPIs semanales a monitorear, 4) Riesgos y mitigación, 5) Veredicto ejecutivo del estado del negocio.',
+        `${ctx}\n\n=== CONTADOR ===\n${rC}\n\n=== ADMINISTRADOR ===\n${rA}`)
       setInformes(p => ({ ...p, gerente: rG }))
+
+      if (hasMkt) {
+        setEstado('marketing')
+        const rM = await llamar('ESTRATEGA DE MARKETING',
+          'Con el análisis del negocio y la base de conocimiento de marca, genera: 1) Posicionamiento estratégico diferenciador, 2) Los 3 servicios estrella para comunicar (basado en rentabilidad+demanda), 3) Propuesta de valor por servicio para cada red social, 4) Temporadas y momentos clave del año para campañas, 5) Presupuesto estimado de marketing recomendado.',
+          `${ctx}\n\n=== ANÁLISIS GERENTE ===\n${rG}\n\n${mktCtx}`)
+        setInformes(p => ({ ...p, marketing: rM }))
+
+        setEstado('contenido')
+        const rCo = await llamar('PLANIFICADOR DE CONTENIDO DIGITAL',
+          'Con la estrategia de marketing, crea: 1) Calendario de contenido semanal (4 semanas), 2) Ideas de posts para Instagram (antes/después, tips, promociones), 3) Ideas para TikTok/Reels (tutoriales, behind the scenes), 4) Frecuencia y horarios óptimos por red, 5) Hashtags estratégicos recomendados.',
+          `${mktCtx}\n\n=== ESTRATEGIA MARKETING ===\n${rM}\n\n${ctx}`)
+        setInformes(p => ({ ...p, contenido: rCo }))
+
+        setEstado('publicidad')
+        const rP = await llamar('ESPECIALISTA EN PUBLICIDAD Y CAMPAÑAS',
+          'Con el plan de contenido y estrategia, diseña: 1) 3 campañas publicitarias específicas con nombre, objetivo y copy, 2) Textos de anuncios listos para usar (Instagram Ads / Facebook Ads), 3) Ofertas y promociones estratégicas basadas en la rentabilidad real, 4) Ideas de campaña por temporada/fecha especial, 5) Métricas de éxito esperadas por campaña.',
+          `${mktCtx}\n\n=== ESTRATEGIA ===\n${rM}\n\n=== CONTENIDO ===\n${rCo}\n\n${ctx}`)
+        setInformes(p => ({ ...p, publicidad: rP }))
+      }
       setEstado('listo')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error desconocido')
@@ -742,46 +823,137 @@ ${detalle}`
   function exportarPDF() {
     const w = window.open('', '_blank')
     if (!w) return
-    w.document.write(`<html><head><title>Análisis Multi-Agente · Cosmopolitan</title>
-<style>body{font-family:Arial,sans-serif;padding:30px;color:#1a1a2e;max-width:900px;margin:0 auto}
-h1{color:#0f3460;border-bottom:3px solid #d4af37;padding-bottom:12px}
-h2{margin-top:32px;padding:10px 16px;border-radius:8px;font-size:15px}
-.cnt{background:#ecfdf5;color:#065f46}.adm{background:#eff6ff;color:#1e40af}.ger{background:#fffbeb;color:#92400e}
-pre{white-space:pre-wrap;font-family:Arial;line-height:1.7;font-size:13px;margin:0;padding:16px;background:#f9fafb;border-radius:6px}
-.footer{margin-top:40px;color:#9ca3af;font-size:11px;text-align:center}</style></head>
-<body><h1>🤖 Análisis Estratégico Multi-Agente</h1>
-<p style="color:#6b7280;font-size:13px">Cosmopolitan Peluquerías · Ecuador · ${new Date().toLocaleDateString('es-EC', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-<h2 class="cnt">📊 CONTADOR — Análisis Financiero</h2><pre>${informes.contador}</pre>
-<h2 class="adm">⚙️ ADMINISTRADOR — Gestión Operativa</h2><pre>${informes.administrador}</pre>
-<h2 class="ger">👔 GERENTE GENERAL — Decisiones Estratégicas</h2><pre>${informes.gerente}</pre>
-<div class="footer">Generado por Cosmo IA · NS Consultoría Digital · cosmopolitan-app.vercel.app</div>
+    const fecha = new Date().toLocaleDateString('es-EC', { year: 'numeric', month: 'long', day: 'numeric' })
+    const seccion = (emoji: string, titulo: string, cls: string, contenido: string) =>
+      contenido ? `<div class="sec ${cls}"><div class="sec-head"><span class="emoji">${emoji}</span><div><h2>${titulo}</h2></div></div><div class="body">${mdToHtml(contenido)}</div></div>` : ''
+    w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Análisis Multi-Agente · Cosmopolitan</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a1a2e;padding:32px 16px}
+.page{max-width:900px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)}
+.cover{background:linear-gradient(135deg,#1a1a2e 0%,#0f3460 100%);padding:40px;color:white}
+.cover h1{font-size:26px;font-weight:800;letter-spacing:.02em;margin-bottom:6px}
+.cover .sub{color:#d4af37;font-size:13px;font-weight:600;margin-bottom:4px}
+.cover .fecha{color:rgba(255,255,255,.5);font-size:11px}
+.gold-bar{height:4px;background:linear-gradient(90deg,#d4af37,#f5d98b,#d4af37)}
+.content{padding:32px}
+.sec{border-radius:12px;margin-bottom:24px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.sec-head{display:flex;align-items:center;gap:14px;padding:16px 20px}
+.emoji{font-size:24px;width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.25);flex-shrink:0}
+.sec-head h2{font-size:15px;font-weight:700;margin:0}
+.body{padding:16px 20px 20px;background:white;font-size:13px;line-height:1.75}
+.cnt .sec-head{background:#059669;color:white}.cnt .emoji{background:rgba(255,255,255,.2)}
+.adm .sec-head{background:#2563eb;color:white}.adm .emoji{background:rgba(255,255,255,.2)}
+.ger .sec-head{background:#d97706;color:white}.ger .emoji{background:rgba(255,255,255,.2)}
+.mkt .sec-head{background:#7c3aed;color:white}.mkt .emoji{background:rgba(255,255,255,.2)}
+.con .sec-head{background:#0891b2;color:white}.con .emoji{background:rgba(255,255,255,.2)}
+.pub .sec-head{background:#be185d;color:white}.pub .emoji{background:rgba(255,255,255,.2)}
+.body h1{font-size:16px;color:#1a1a2e;margin:16px 0 6px;border-bottom:2px solid #e5e7eb;padding-bottom:4px}
+.body h2{font-size:14px;color:#374151;margin:14px 0 4px;font-weight:700}
+.body h3{font-size:13px;color:#6b7280;margin:10px 0 3px;font-weight:700}
+.body p{margin:4px 0}
+.body ul{margin:6px 0 6px 18px;padding:0}
+.body li{margin:3px 0}
+.body table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px}
+.body th{background:#f1f5f9;font-weight:700;padding:7px 10px;border:1px solid #e2e8f0;text-align:left}
+.body td{padding:6px 10px;border:1px solid #e2e8f0}
+.body tr:nth-child(even) td{background:#f9fafb}
+.body hr{border:none;border-top:1px solid #e5e7eb;margin:14px 0}
+.body strong{font-weight:700;color:#111827}
+.footer{padding:20px 32px;background:#f8fafc;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af}
+@media print{body{background:white;padding:0}.page{box-shadow:none;border-radius:0}}
+</style></head><body>
+<div class="page">
+<div class="cover">
+  <div class="sub">Análisis Estratégico Multi-Agente IA</div>
+  <h1>Cosmopolitan Peluquerías</h1>
+  <div class="fecha">Ecuador · Generado el ${fecha} · ${hasMkt ? '6 agentes IA' : '3 agentes IA'}</div>
+</div>
+<div class="gold-bar"></div>
+<div class="content">
+${seccion('📊', 'CONTADOR — Análisis Financiero', 'cnt', informes.contador)}
+${seccion('⚙️', 'ADMINISTRADOR — Gestión Operativa', 'adm', informes.administrador)}
+${seccion('👔', 'GERENTE GENERAL — Decisiones Estratégicas', 'ger', informes.gerente)}
+${seccion('🎯', 'ESTRATEGA DE MARKETING', 'mkt', informes.marketing)}
+${seccion('📅', 'PLANIFICADOR DE CONTENIDO', 'con', informes.contenido)}
+${seccion('📣', 'ESPECIALISTA EN PUBLICIDAD', 'pub', informes.publicidad)}
+</div>
+<div class="footer">
+  <span>Cosmo IA · NS Consultoría Digital</span>
+  <span>cosmopolitan-app.vercel.app</span>
+</div>
+</div>
 </body></html>`)
-    w.document.close(); w.print()
+    w.document.close(); setTimeout(() => w.print(), 500)
   }
 
-  const agentes = [
-    { key: 'contador' as const, label: 'Contador', emoji: '📊', color: '#10b981', bg: '#ecfdf5', desc: 'Análisis financiero y contable' },
-    { key: 'administrador' as const, label: 'Administrador', emoji: '⚙️', color: '#3b82f6', bg: '#eff6ff', desc: 'Gestión operativa y precios' },
-    { key: 'gerente' as const, label: 'Gerente General', emoji: '👔', color: '#d4af37', bg: '#fffbeb', desc: 'Decisiones estratégicas ejecutivas' },
+  const todosAgentes = [
+    { key: 'contador' as const, label: 'Contador', emoji: '📊', color: '#059669', bg: '#ecfdf5', desc: 'Análisis financiero' },
+    { key: 'administrador' as const, label: 'Administrador', emoji: '⚙️', color: '#2563eb', bg: '#eff6ff', desc: 'Gestión operativa' },
+    { key: 'gerente' as const, label: 'Gerente', emoji: '👔', color: '#d97706', bg: '#fffbeb', desc: 'Decisiones ejecutivas' },
+    { key: 'marketing' as const, label: 'Marketing', emoji: '🎯', color: '#7c3aed', bg: '#f5f3ff', desc: 'Estrategia de marca' },
+    { key: 'contenido' as const, label: 'Contenido', emoji: '📅', color: '#0891b2', bg: '#ecfeff', desc: 'Plan de contenido' },
+    { key: 'publicidad' as const, label: 'Publicidad', emoji: '📣', color: '#be185d', bg: '#fdf2f8', desc: 'Campañas y anuncios' },
   ]
-  const pasos: Estado[] = ['contador', 'administrador', 'gerente', 'listo']
-  const etiqueta: Record<Estado, string> = {
-    idle: '', contador: '📊 Contador analizando finanzas...', administrador: '⚙️ Administrador revisando operaciones...', gerente: '👔 Gerente tomando decisiones estratégicas...', listo: '✅ Análisis completo — 3 agentes listos',
+  const agentesActivos = hasMkt ? todosAgentes : todosAgentes.slice(0, 3)
+  const etiqueta: Record<string, string> = {
+    idle: '', contador: '📊 Contador analizando finanzas...', administrador: '⚙️ Administrador revisando operaciones...',
+    gerente: '👔 Gerente tomando decisiones...', marketing: '🎯 Estratega de marketing construyendo posicionamiento...',
+    contenido: '📅 Planificador creando calendario de contenido...', publicidad: '📣 Especialista diseñando campañas...',
+    listo: `✅ Análisis completo — ${agentesActivos.length} agentes listos`,
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 860, margin: '0 auto' }}>
+    <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
+
+      {/* Base de conocimiento de marketing */}
+      <div style={{ background: 'white', borderRadius: 12, marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'hidden' }}>
+        <div onClick={() => setShowMkt(!showMkt)}
+          style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: hasMkt ? '#f5f3ff' : '#fafafa' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>🧠</span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1a2e' }}>Base de Conocimiento de Marketing</div>
+              <div style={{ fontSize: 11, color: '#6b7280' }}>{hasMkt ? '✓ Configurada — activa 3 agentes de marketing adicionales' : 'Opcional — activa agentes de marketing, contenido y publicidad'}</div>
+            </div>
+          </div>
+          <span style={{ color: '#9ca3af', fontSize: 14 }}>{showMkt ? '▲ Ocultar' : '▼ Configurar'}</span>
+        </div>
+        {showMkt && (
+          <div style={{ padding: 20, borderTop: '1px solid #f3f4f6', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {([
+              { key: 'avatar', label: '👤 Avatar del cliente ideal', ph: 'Ej: Mujer 25-45 años, clase media-alta, Quito, interesada en belleza y autocuidado...', rows: 3 },
+              { key: 'tono', label: '🗣️ Tono de voz de la marca', ph: 'Ej: Profesional, cálido y aspiracional. Cercano pero elegante...', rows: 3 },
+              { key: 'propuesta', label: '💎 Propuesta de valor única', ph: 'Ej: Somos la peluquería premium de confianza en Ecuador con 10 años de experiencia...', rows: 3 },
+              { key: 'objetivos', label: '🎯 Objetivos de marketing', ph: 'Ej: Aumentar clientes 20%, fidelizar actuales, posicionarnos en Instagram...', rows: 3 },
+            ] as { key: keyof MktBase; label: string; ph: string; rows: number }[]).map(f => (
+              <div key={f.key}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>{f.label}</label>
+                <textarea value={mkt[f.key]} onChange={e => saveMkt({ ...mkt, [f.key]: e.target.value })} placeholder={f.ph} rows={f.rows}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 8, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+              </div>
+            ))}
+            <div style={{ gridColumn: '1/-1' }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>📱 Redes sociales activas</label>
+              <input value={mkt.redes} onChange={e => saveMkt({ ...mkt, redes: e.target.value })} placeholder="Instagram, Facebook, TikTok, WhatsApp..."
+                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 8 }} />
+            </div>
+            {hasMkt && <div style={{ gridColumn: '1/-1', padding: '8px 12px', background: '#f5f3ff', borderRadius: 8, fontSize: 12, color: '#7c3aed', fontWeight: 600 }}>
+              🚀 Con esta base de conocimiento se activarán 3 agentes adicionales: Estratega de Marketing, Planificador de Contenido y Especialista en Publicidad.
+            </div>}
+          </div>
+        )}
+      </div>
+
       {/* Header card */}
-      <div style={{ background: 'white', borderRadius: 12, padding: 24, marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ background: 'white', borderRadius: 12, padding: 22, marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
           <div>
-            <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1a1a2e', margin: '0 0 4px' }}>🤖 Flujo Multi-Agente IA</h2>
-            <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>Tres agentes IA trabajan en cadena con los datos reales de Cosmopolitan</p>
+            <h2 style={{ fontSize: 19, fontWeight: 800, color: '#1a1a2e', margin: '0 0 3px' }}>🤖 Flujo Multi-Agente IA</h2>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>{agentesActivos.length} agentes trabajando en cadena · cada uno recibe el análisis del anterior</p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {estado === 'listo' && (
-              <button onClick={exportarPDF} style={{ padding: '8px 14px', background: '#0f3460', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>📄 PDF</button>
-            )}
+            {estado === 'listo' && <button onClick={exportarPDF} style={{ padding: '8px 14px', background: '#0f3460', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>📄 PDF</button>}
             <button onClick={generar} disabled={estado !== 'idle' && estado !== 'listo'}
               style={{ padding: '8px 20px', background: (estado === 'idle' || estado === 'listo') ? '#d4af37' : '#9ca3af', color: 'white', border: 'none', borderRadius: 8, cursor: (estado === 'idle' || estado === 'listo') ? 'pointer' : 'not-allowed', fontSize: 13, fontWeight: 700 }}>
               {estado === 'idle' ? '▶ Generar Análisis' : estado === 'listo' ? '🔄 Regenerar' : '⏳ Procesando...'}
@@ -791,59 +963,58 @@ pre{white-space:pre-wrap;font-family:Arial;line-height:1.7;font-size:13px;margin
 
         {/* Pipeline visual */}
         {estado !== 'idle' && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-              {agentes.map((a, i) => {
+          <div style={{ marginTop: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', overflowX: 'auto', paddingBottom: 4 }}>
+              {agentesActivos.map((a, i) => {
                 const done = informes[a.key] !== ''
                 const active = estado === a.key
                 return (
                   <React.Fragment key={a.key}>
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: done ? a.color : active ? a.color : '#e5e7eb', color: done || active ? 'white' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 6px', fontSize: 18, boxShadow: active ? `0 0 0 4px ${a.color}33` : 'none', transition: 'all .3s' }}>
+                    <div style={{ textAlign: 'center', minWidth: 72 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: '50%', background: done ? a.color : active ? a.color : '#e5e7eb', color: done || active ? 'white' : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 5px', fontSize: 15, boxShadow: active ? `0 0 0 3px ${a.color}44` : 'none', transition: 'all .3s' }}>
                         {done ? '✓' : a.emoji}
                       </div>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: done ? a.color : active ? a.color : '#9ca3af' }}>{a.label}</div>
-                      <div style={{ fontSize: 10, color: '#9ca3af' }}>{a.desc}</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: done ? a.color : active ? a.color : '#9ca3af' }}>{a.label}</div>
                     </div>
-                    {i < 2 && <div style={{ width: 40, height: 2, background: informes[agentes[i+1].key] !== '' ? '#10b981' : '#e5e7eb', flexShrink: 0, transition: 'background .5s' }} />}
+                    {i < agentesActivos.length - 1 && <div style={{ flex: 1, height: 2, background: done ? a.color : '#e5e7eb', marginTop: 17, minWidth: 16, transition: 'background .5s' }} />}
                   </React.Fragment>
                 )
               })}
             </div>
-            <div style={{ textAlign: 'center', marginTop: 10, fontSize: 12, color: '#6b7280', fontStyle: 'italic' }}>{etiqueta[estado]}</div>
+            <div style={{ textAlign: 'center', marginTop: 8, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>{etiqueta[estado]}</div>
           </div>
         )}
-        {error && <div style={{ marginTop: 12, padding: 10, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>❌ {error}</div>}
+        {error && <div style={{ marginTop: 10, padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#dc2626', fontSize: 12 }}>❌ {error}</div>}
       </div>
 
-      {/* Agent report cards */}
-      {agentes.map(a => {
+      {/* Report cards */}
+      {todosAgentes.map(a => {
         const texto = informes[a.key]
         const isActive = estado === a.key
         if (!texto && !isActive) return null
         const exp = expandido[a.key]
         return (
-          <div key={a.key} style={{ background: 'white', borderRadius: 12, marginBottom: 14, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'hidden', border: `2px solid ${isActive ? a.color : 'transparent'}`, transition: 'border .3s' }}>
+          <div key={a.key} style={{ background: 'white', borderRadius: 12, marginBottom: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)', overflow: 'hidden', border: `2px solid ${isActive ? a.color : 'transparent'}`, transition: 'border .3s' }}>
             <div onClick={() => setExpandido(p => ({ ...p, [a.key]: !p[a.key] }))}
-              style={{ padding: '13px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: isActive ? a.bg : '#fafafa', borderBottom: exp ? '1px solid #f3f4f6' : 'none' }}>
+              style={{ padding: '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: isActive ? a.bg : '#fafafa', borderBottom: exp ? '1px solid #f3f4f6' : 'none' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 9, background: a.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19 }}>{a.emoji}</div>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: a.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17 }}>{a.emoji}</div>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1a2e' }}>{a.label}</div>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#1a1a2e' }}>{a.label}</div>
                   <div style={{ fontSize: 11, color: '#6b7280' }}>{a.desc}</div>
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {isActive && !texto && <span style={{ fontSize: 11, color: a.color, fontWeight: 600 }}>Analizando…</span>}
-                {texto && <span style={{ fontSize: 11, color: '#10b981', fontWeight: 600 }}>✓ Listo</span>}
-                <span style={{ color: '#9ca3af' }}>{exp ? '▲' : '▼'}</span>
+                {isActive && !texto && <span style={{ fontSize: 11, color: a.color, fontWeight: 600, animation: 'pulse 1.5s infinite' }}>Analizando…</span>}
+                {texto && <span style={{ fontSize: 11, color: '#059669', fontWeight: 600 }}>✓ Listo</span>}
+                <span style={{ color: '#9ca3af', fontSize: 12 }}>{exp ? '▲' : '▼'}</span>
               </div>
             </div>
             {exp && (
-              <div style={{ padding: 18 }}>
+              <div style={{ padding: '0 20px 20px' }}>
                 {isActive && !texto
-                  ? <div style={{ textAlign: 'center', padding: '28px 0', color: '#9ca3af' }}><div style={{ fontSize: 28, marginBottom: 8 }}>⏳</div><div style={{ fontSize: 13 }}>Procesando…</div></div>
-                  : <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.75, color: '#374151', margin: 0 }}>{texto}</pre>
+                  ? <div style={{ textAlign: 'center', padding: '32px 0', color: '#9ca3af' }}><div style={{ fontSize: 26, marginBottom: 8 }}>⏳</div><div style={{ fontSize: 12 }}>Procesando con IA…</div></div>
+                  : <div style={{ fontSize: 13, lineHeight: 1.75, color: '#374151' }} dangerouslySetInnerHTML={{ __html: mdToHtml(texto) }} />
                 }
               </div>
             )}
@@ -851,18 +1022,20 @@ pre{white-space:pre-wrap;font-family:Arial;line-height:1.7;font-size:13px;margin
         )
       })}
 
-      {/* Idle state */}
+      {/* Idle */}
       {estado === 'idle' && (
-        <div style={{ textAlign: 'center', padding: '48px 24px', background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
-          <div style={{ fontSize: 52, marginBottom: 14 }}>🤖</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginBottom: 6 }}>Análisis estratégico automático en cadena</div>
-          <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 420, margin: '0 auto', lineHeight: 1.6 }}>
-            El <strong>Contador</strong> analiza finanzas → el <strong>Administrador</strong> propone acciones → el <strong>Gerente</strong> toma decisiones.<br />
-            Cada agente recibe el informe del anterior para dar una recomendación más inteligente.
+        <div style={{ textAlign: 'center', padding: '44px 24px', background: 'white', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🤖</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: '#1a1a2e', marginBottom: 6 }}>Análisis estratégico automático en cadena</div>
+          <div style={{ fontSize: 13, color: '#6b7280', maxWidth: 480, margin: '0 auto 8px', lineHeight: 1.7 }}>
+            <strong>Negocio:</strong> Contador → Administrador → Gerente<br />
+            {hasMkt && <><strong>Marketing:</strong> Estratega → Contenido → Publicidad<br /></>}
+            Cada agente recibe los informes anteriores para dar una perspectiva más completa.
           </div>
-          <button onClick={generar} style={{ marginTop: 20, padding: '11px 28px', background: '#d4af37', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-            ▶ Generar Análisis Completo
-          </button>
+          {!hasMkt && <div style={{ fontSize: 11, color: '#7c3aed', marginBottom: 16, background: '#f5f3ff', display: 'inline-block', padding: '4px 12px', borderRadius: 20 }}>💡 Configura la Base de Marketing arriba para activar 3 agentes adicionales</div>}
+          <div><button onClick={generar} style={{ padding: '11px 28px', background: '#d4af37', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            ▶ Generar Análisis {hasMkt ? 'Completo (6 agentes)' : '(3 agentes)'}
+          </button></div>
         </div>
       )}
     </div>
