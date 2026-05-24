@@ -21,6 +21,8 @@ interface Ins {
 }
 interface Rec { servicio_id: number; insumo_id: number; cantidad: number }
 interface VentaMes { id: number; servicio_id: number; mes: number; anio: number; cantidad_real: number }
+interface Pack { id: number; nombre: string; descuento: number; activo: boolean }
+interface PackItem { pack_id: number; servicio_id: number }
 
 // ── COST ENGINE ───────────────────────────────────────────────────────────────
 const CF = 9110.07
@@ -183,7 +185,7 @@ function Sidebar({ page, setPage, onLogout, email, isMobile, isOpen, onClose }: 
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
+function Dashboard({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; isMobile?: boolean }) {
   const t = tasaMin(svcs)
   const computed = svcs.map(s => {
     const ci = costoIns(s.id, ins, recs)
@@ -210,7 +212,7 @@ function Dashboard({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }
 
   return (
     <div style={{ padding: 24 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 14, marginBottom: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap: 14, marginBottom: 18 }}>
         {kpis.map((k, i) => (
           <div key={i} style={{ background: 'white', borderRadius: 12, padding: 18, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -222,7 +224,7 @@ function Dashboard({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }
           </div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: 14 }}>
         <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
           <h3 style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 10 }}>⚠️ Servicios bajo costo</h3>
           {alertas.length === 0
@@ -549,11 +551,14 @@ function Insumos({ ins, setIns }: { ins: Ins[]; setIns: (i: Ins[]) => void }) {
 }
 
 // ── PACKS ─────────────────────────────────────────────────────────────────────
-function Packs({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
+function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; isMobile?: boolean }) {
   const [sel, setSel] = useState<number[]>([])
   const [packName, setPackName] = useState('')
   const [filterCat, setFilterCat] = useState('')
   const [msg, setMsg] = useState('')
+  const [packs, setPacks] = useState<Pack[]>([])
+  const [packItems, setPackItems] = useState<PackItem[]>([])
+  const [loadingPacks, setLoadingPacks] = useState(true)
   const t = tasaMin(svcs)
   const cats = [...new Set(svcs.map(s => s.categoria))].sort()
   const filtered = svcs.filter(s => !filterCat || s.categoria === filterCat)
@@ -564,21 +569,45 @@ function Packs({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
   const precioPack = totalNormal * 0.80
   const mPack = precioPack > 0 ? (precioPack - totalCosto) / precioPack : 0
 
+  useEffect(() => {
+    async function load() {
+      const [{ data: pd }, { data: pi }] = await Promise.all([
+        sb.from('packs').select('*').eq('activo', true).order('id', { ascending: false }),
+        sb.from('pack_items').select('*'),
+      ])
+      setPacks(pd || [])
+      setPackItems(pi || [])
+      setLoadingPacks(false)
+    }
+    load()
+  }, [])
+
   function toggle(id: number) { setSel(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) }
 
   async function guardar() {
     if (!packName.trim() || sel.length < 2) { setMsg('Escribe un nombre y selecciona al menos 2 servicios.'); return }
     const { data, error } = await sb.from('packs').insert([{ nombre: packName, descuento: 0.20, activo: true }]).select().single()
     if (error || !data) { setMsg('Error al guardar: ' + error?.message); return }
-    await sb.from('pack_items').insert(sel.map(sid => ({ pack_id: data.id, servicio_id: sid })))
-    setMsg(`✅ Pack "${packName}" guardado en la nube`)
+    const newItems = sel.map(sid => ({ pack_id: data.id, servicio_id: sid }))
+    await sb.from('pack_items').insert(newItems)
+    setPacks(prev => [data, ...prev])
+    setPackItems(prev => [...prev, ...newItems])
+    setMsg(`✅ Pack "${packName}" guardado`)
     setSel([]); setPackName('')
     setTimeout(() => setMsg(''), 3000)
   }
 
+  async function eliminar(packId: number) {
+    await sb.from('pack_items').delete().eq('pack_id', packId)
+    await sb.from('packs').update({ activo: false }).eq('id', packId)
+    setPacks(prev => prev.filter(p => p.id !== packId))
+    setPackItems(prev => prev.filter(pi => pi.pack_id !== packId))
+  }
+
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16 }}>
+      {/* Constructor */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 320px', gap: 16, marginBottom: 20 }}>
         <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 8 }}>🛠️ Constructor de Pack Personalizado</h3>
           <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>Selecciona 2 o más servicios:</p>
@@ -586,7 +615,7 @@ function Packs({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
             <button onClick={() => setFilterCat('')} style={{ padding: '5px 10px', background: !filterCat ? '#0f3460' : 'white', color: !filterCat ? 'white' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>Todos</button>
             {cats.map(c => <button key={c} onClick={() => setFilterCat(c === filterCat ? '' : c)} style={{ padding: '5px 10px', background: filterCat === c ? '#0f3460' : 'white', color: filterCat === c ? 'white' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>{c}</button>)}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, maxHeight: 400, overflowY: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: 8, maxHeight: 400, overflowY: 'auto' }}>
             {filtered.map(s => (
               <div key={s.id} onClick={() => toggle(s.id)}
                 style={{ background: sel.includes(s.id) ? '#fffbeb' : 'white', border: `2px solid ${sel.includes(s.id) ? '#d4af37' : '#e5e7eb'}`, borderRadius: 10, padding: 10, cursor: 'pointer', fontSize: 12 }}>
@@ -597,7 +626,7 @@ function Packs({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
             ))}
           </div>
         </div>
-        <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)', position: 'sticky', top: 0, alignSelf: 'start' }}>
+        <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)', position: isMobile ? 'static' : 'sticky', top: 0, alignSelf: 'start' }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 10 }}>🧾 Tu Pack</h3>
           <input type="text" value={packName} onChange={e => setPackName(e.target.value)} placeholder="Nombre del pack…"
             style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e5e7eb', padding: '8px 11px', borderRadius: 8, fontSize: 12.5, outline: 'none', marginBottom: 10 }} />
@@ -622,6 +651,61 @@ function Packs({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Lista de packs guardados */}
+      <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <span style={{ fontSize: 16 }}>📦</span>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>
+            Packs Guardados
+            {!loadingPacks && <span style={{ marginLeft: 6, background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 }}>{packs.length}</span>}
+          </h3>
+        </div>
+        {loadingPacks ? (
+          <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 24 }}>Cargando packs...</div>
+        ) : packs.length === 0 ? (
+          <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 32 }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🎁</div>
+            No hay packs guardados aún.<br />¡Crea el primero arriba seleccionando servicios!
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(260px,1fr))', gap: 14 }}>
+            {packs.map(pack => {
+              const items = packItems.filter(pi => pi.pack_id === pack.id)
+              const svcsInPack = items.map(pi => svcs.find(s => s.id === pi.servicio_id)).filter(Boolean) as Svc[]
+              const totalN = svcsInPack.reduce((s, v) => s + v.pvp, 0)
+              const precio = totalN * (1 - pack.descuento)
+              return (
+                <div key={pack.id} style={{ border: '1.5px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fafafa' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#1a1a2e' }}>🎁 {pack.nombre}</div>
+                    <button onClick={() => eliminar(pack.id)} title="Eliminar pack"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, color: '#dc2626', padding: 0, lineHeight: 1 }}>🗑</button>
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    {svcsInPack.map(s => (
+                      <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#4b5563', padding: '2px 0', borderBottom: '1px solid #f3f4f6' }}>
+                        <span>• {s.nombre}</span><span>{f$(s.pvp)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ background: '#fffbeb', borderRadius: 8, padding: '8px 10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>
+                      <span>Normal:</span><span style={{ textDecoration: 'line-through' }}>{f$(totalN)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800 }}>
+                      <span style={{ color: '#1a1a2e' }}>Pack:</span><span style={{ color: '#d4af37' }}>{f$(precio)}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#059669', textAlign: 'right', marginTop: 2 }}>
+                      Ahorro {f$(totalN - precio)} · {Math.round(pack.descuento * 100)}% off
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -730,7 +814,7 @@ function mdToHtml(text: string): string {
 // ── MULTI-AGENTES IA ──────────────────────────────────────────────────────────
 interface MktBase { avatar: string; tono: string; propuesta: string; redes: string; objetivos: string }
 
-function MultiAgentes({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
+function MultiAgentes({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; isMobile?: boolean }) {
   type Estado = 'idle' | 'contador' | 'administrador' | 'gerente' | 'marketing' | 'contenido' | 'publicidad' | 'listo'
   const [estado, setEstado] = React.useState<Estado>('idle')
   const [informes, setInformes] = React.useState({ contador: '', administrador: '', gerente: '', marketing: '', contenido: '', publicidad: '' })
@@ -1064,7 +1148,7 @@ ${seccion('📣', 'ESPECIALISTA EN PUBLICIDAD', 'pub', informes.publicidad)}
             </div>
 
             {/* Campos manuales */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
               {([
                 { key: 'avatar', label: '👤 Avatar del cliente ideal', ph: 'Ej: Mujer 25-45 años, clase media-alta, Quito, interesada en belleza y autocuidado...', rows: 3 },
                 { key: 'tono', label: '🗣️ Tono de voz de la marca', ph: 'Ej: Profesional, cálido y aspiracional. Cercano pero elegante...', rows: 3 },
@@ -1332,7 +1416,7 @@ ${computed.map(s => `  - ${s.nombre} | ${s.categoria} | PVP: ${f$(s.pvp)} | Cost
 // ── REGISTRO MENSUAL ──────────────────────────────────────────────────────────
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
-function RegistroMensual({ svcs }: { svcs: Svc[] }) {
+function RegistroMensual({ svcs, isMobile }: { svcs: Svc[]; isMobile?: boolean }) {
   const now = new Date()
   const [mes, setMes] = useState(now.getMonth() + 1)
   const [anio, setAnio] = useState(now.getFullYear())
@@ -1422,7 +1506,7 @@ function RegistroMensual({ svcs }: { svcs: Svc[] }) {
         {msg && <span style={{ fontSize: 12, color: msg.startsWith('✅') ? '#059669' : '#dc2626', fontWeight: 600 }}>{msg}</span>}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
         {[
           { label: 'Ingreso Proyectado', val: fint(totalProy), color: '#1a1a2e' },
           { label: 'Ingreso Real', val: fint(totalReal), color: totalReal >= totalProy ? '#059669' : '#dc2626' },
@@ -1568,20 +1652,20 @@ export default function App() {
             <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0f3460', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11, fontWeight: 700 }}>NS</div>
           </div>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', background: '#f0f2f5' }}>
+        <div style={{ flex: 1, overflow: 'auto', background: '#f0f2f5' }}>
           {dataLoading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50%' }}>
               <div style={{ color: '#6b7280', fontSize: 14 }}>Cargando datos de Supabase...</div>
             </div>
           ) : (
             <>
-              {page === 'dashboard' && <Dashboard svcs={svcs} ins={ins} recs={recs} />}
+              {page === 'dashboard' && <Dashboard svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
               {page === 'servicios' && <Servicios svcs={svcs} setSvcs={setSvcs} ins={ins} recs={recs} />}
               {page === 'insumos' && <Insumos ins={ins} setIns={setIns} />}
-              {page === 'packs' && <Packs svcs={svcs} ins={ins} recs={recs} />}
+              {page === 'packs' && <Packs svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
               {page === 'rentabilidad' && <Rentabilidad svcs={svcs} ins={ins} recs={recs} />}
-              {page === 'registro' && <RegistroMensual svcs={svcs} />}
-              {page === 'multiagentes' && <MultiAgentes svcs={svcs} ins={ins} recs={recs} />}
+              {page === 'registro' && <RegistroMensual svcs={svcs} isMobile={isMobile} />}
+              {page === 'multiagentes' && <MultiAgentes svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
             </>
           )}
         </div>
