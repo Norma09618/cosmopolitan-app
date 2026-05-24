@@ -130,32 +130,55 @@ const NAV: { id: Page; icon: string; label: string; section: string }[] = [
   { id: 'multiagentes', icon: '🤖', label: 'Multi-Agentes IA', section: '' },
 ]
 
-function Sidebar({ page, setPage, onLogout, email }: { page: Page; setPage: (p: Page) => void; onLogout: () => void; email: string }) {
+function Sidebar({ page, setPage, onLogout, email, isMobile, isOpen, onClose }: {
+  page: Page; setPage: (p: Page) => void; onLogout: () => void; email: string
+  isMobile?: boolean; isOpen?: boolean; onClose?: () => void
+}) {
+  function navClick(id: Page) { setPage(id); if (isMobile && onClose) onClose() }
+
+  const drawer = isMobile ? {
+    position: 'fixed' as const, top: 0, left: 0, zIndex: 300, height: '100vh',
+    transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
+    transition: 'transform .25s cubic-bezier(.4,0,.2,1)',
+    boxShadow: isOpen ? '4px 0 24px rgba(0,0,0,.4)' : 'none',
+  } : {}
+
   return (
-    <div style={{ background: '#1a1a2e', width: 230, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <div style={{ padding: 20, borderBottom: '1px solid rgba(255,255,255,.1)' }}>
-        <div style={{ color: '#d4af37', fontSize: 17, fontWeight: 800 }}>COSMOPOLITAN</div>
-        <div style={{ color: '#6b7280', fontSize: 11, marginTop: 3 }}>Peluquerías · Sistema de Gestión</div>
-      </div>
-      <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
-        {NAV.map(n => (
-          <div key={n.id}>
-            {n.section && <div style={{ color: '#4b5563', fontSize: 10, padding: '10px 24px 4px', fontWeight: 700, letterSpacing: '.08em' }}>{n.section}</div>}
-            <div onClick={() => setPage(n.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', color: page === n.id ? '#d4af37' : '#9ca3af', background: page === n.id ? '#0f3460' : 'transparent', cursor: 'pointer', borderRadius: 8, margin: '2px 8px', fontSize: 13.5, transition: 'all .15s' }}>
-              <span>{n.icon}</span> {n.label}
-            </div>
+    <>
+      {/* Overlay oscuro detrás del drawer */}
+      {isMobile && isOpen && (
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 299 }} />
+      )}
+      <div style={{ background: '#1a1a2e', width: 230, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100vh', ...drawer }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ color: '#d4af37', fontSize: 17, fontWeight: 800 }}>COSMOPOLITAN</div>
+            <div style={{ color: '#6b7280', fontSize: 11, marginTop: 3 }}>Peluquerías · Sistema de Gestión</div>
           </div>
-        ))}
-      </nav>
-      <div style={{ padding: '14px 16px', borderTop: '1px solid rgba(255,255,255,.08)' }}>
-        <div style={{ color: '#6b7280', fontSize: 11, marginBottom: 8, wordBreak: 'break-all' }}>{email}</div>
-        <button onClick={onLogout}
-          style={{ width: '100%', padding: '6px 10px', background: 'none', border: '1px solid rgba(255,255,255,.15)', borderRadius: 7, color: '#9ca3af', fontSize: 11, cursor: 'pointer' }}>
-          Cerrar sesión
-        </button>
+          {isMobile && (
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 20, cursor: 'pointer', padding: 4, lineHeight: 1 }}>✕</button>
+          )}
+        </div>
+        <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
+          {NAV.map(n => (
+            <div key={n.id}>
+              {n.section && <div style={{ color: '#4b5563', fontSize: 10, padding: '10px 24px 4px', fontWeight: 700, letterSpacing: '.08em' }}>{n.section}</div>}
+              <div onClick={() => navClick(n.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', color: page === n.id ? '#d4af37' : '#9ca3af', background: page === n.id ? '#0f3460' : 'transparent', cursor: 'pointer', borderRadius: 8, margin: '2px 8px', fontSize: 13.5, transition: 'all .15s' }}>
+                <span>{n.icon}</span> {n.label}
+              </div>
+            </div>
+          ))}
+        </nav>
+        <div style={{ padding: '14px 16px', borderTop: '1px solid rgba(255,255,255,.08)' }}>
+          <div style={{ color: '#6b7280', fontSize: 11, marginBottom: 8, wordBreak: 'break-all' }}>{email}</div>
+          <button onClick={onLogout}
+            style={{ width: '100%', padding: '6px 10px', background: 'none', border: '1px solid rgba(255,255,255,.15)', borderRadius: 7, color: '#9ca3af', fontSize: 11, cursor: 'pointer' }}>
+            Cerrar sesión
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -1341,6 +1364,15 @@ export default function App() {
   const [ins, setIns] = useState<Ins[]>([])
   const [recs, setRecs] = useState<Rec[]>([])
   const [dataLoading, setDataLoading] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
@@ -1379,16 +1411,33 @@ export default function App() {
   const info = PAGE_INFO[page]
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <Sidebar page={page} setPage={setPage} onLogout={doLogout} email={session.user.email || ''} />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: '11px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div>
-            <h1 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>{info.t}</h1>
-            <p style={{ fontSize: 11, color: '#6b7280', margin: 0 }}>{info.s}</p>
+      {/* Sidebar — desktop normal, móvil drawer */}
+      {!isMobile && (
+        <Sidebar page={page} setPage={setPage} onLogout={doLogout} email={session.user.email || ''} />
+      )}
+      {isMobile && (
+        <Sidebar page={page} setPage={setPage} onLogout={doLogout} email={session.user.email || ''}
+          isMobile isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      )}
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+        <div style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: isMobile ? '10px 14px' : '11px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            {/* Botón hamburguesa — solo móvil */}
+            {isMobile && (
+              <button onClick={() => setSidebarOpen(true)}
+                style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#1a1a2e', padding: '2px 4px', lineHeight: 1, flexShrink: 0 }}>
+                ☰
+              </button>
+            )}
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ fontSize: isMobile ? 14 : 17, fontWeight: 700, color: '#111827', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{info.t}</h1>
+              {!isMobile && <p style={{ fontSize: 11, color: '#6b7280', margin: 0 }}>{info.s}</p>}
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ fontSize: 11, color: '#9ca3af' }}>🟢 En línea</div>
-            <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#0f3460', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontWeight: 700 }}>NS</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div style={{ fontSize: 11, color: '#9ca3af' }}>🟢</div>
+            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0f3460', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11, fontWeight: 700 }}>NS</div>
           </div>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', background: '#f0f2f5' }}>
