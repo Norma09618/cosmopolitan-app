@@ -740,6 +740,7 @@ function MultiAgentes({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
   const [mkt, setMkt] = React.useState<MktBase>({ avatar: '', tono: '', propuesta: '', redes: 'Instagram, Facebook, TikTok', objetivos: '' })
   const [pdfNombre, setPdfNombre] = React.useState('')
   const [pdfCargando, setPdfCargando] = React.useState(false)
+  const [pdfProgreso, setPdfProgreso] = React.useState('')
   const [pdfError, setPdfError] = React.useState('')
   const [guardando, setGuardando] = React.useState(false)
 
@@ -774,40 +775,63 @@ function MultiAgentes({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
     const muyGrandes = files.filter(f => f.size > 20 * 1024 * 1024)
     if (muyGrandes.length > 0) { setPdfError(`Archivo(s) muy grandes (máx 20MB): ${muyGrandes.map(f => f.name).join(', ')}`); return }
 
-    setPdfCargando(true); setPdfError('')
+    setPdfCargando(true); setPdfError(''); setPdfProgreso('')
     try {
-      // 1. Subir todos a Supabase Storage y convertir a base64 en paralelo
-      const procesados = await Promise.all(files.map(async (file) => {
-        const path = `brief-${Date.now()}-${file.name}`
+      const resultados: string[] = []
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        setPdfProgreso(`📄 Procesando "${file.name}" (${i + 1} de ${files.length})...`)
+
+        // Subir a Supabase Storage
+        const path = `brief-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`
         await sb.storage.from('marketing-docs').upload(path, file, { contentType: 'application/pdf' })
+
+        // Convertir a base64
         const base64 = await new Promise<string>((res, rej) => {
           const reader = new FileReader()
           reader.onload = () => res((reader.result as string).split(',')[1])
           reader.onerror = rej
           reader.readAsDataURL(file)
         })
-        return base64
-      }))
 
-      // 2. Enviar todos los PDFs a Claude para extracción unificada
-      const resp = await fetch('/api/extract-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pdfs: procesados }),
-      })
-      const data = await resp.json()
-      if (data.error) throw new Error(data.error)
+        // Extraer de este PDF individualmente
+        const resp = await fetch('/api/extract-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdf: base64 }),
+        })
+        const data = await resp.json()
+        if (data.error) throw new Error(`Error en "${file.name}": ${data.error}`)
+        resultados.push(JSON.stringify(data.data))
+      }
 
-      // 3. Auto-llenar campos y guardar en Supabase
+      // Sintetizar si hay más de un documento
+      let final: Record<string, string>
+      if (resultados.length === 1) {
+        final = JSON.parse(resultados[0])
+      } else {
+        setPdfProgreso(`🧠 Sintetizando información de ${files.length} documentos...`)
+        const resp = await fetch('/api/extract-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sintetizar: resultados }),
+        })
+        const data = await resp.json()
+        if (data.error) throw new Error(data.error)
+        final = data.data
+      }
+
       const extracted: MktBase = {
-        avatar: data.data.avatar || '',
-        tono: data.data.tono || '',
-        propuesta: data.data.propuesta || '',
-        redes: data.data.redes || mkt.redes,
-        objetivos: data.data.objetivos || '',
+        avatar: final.avatar || '',
+        tono: final.tono || '',
+        propuesta: final.propuesta || '',
+        redes: final.redes || mkt.redes,
+        objetivos: final.objetivos || '',
       }
       const nombres = files.map(f => f.name).join(', ')
       setPdfNombre(nombres)
+      setPdfProgreso('')
       setMkt(extracted)
       await sb.from('marca_config').upsert({
         id: 1, ...extracted, pdf_nombre: nombres,
@@ -815,6 +839,7 @@ function MultiAgentes({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
       }, { onConflict: 'id' })
     } catch (err) {
       setPdfError(err instanceof Error ? err.message : 'Error al procesar los PDFs')
+      setPdfProgreso('')
     }
     setPdfCargando(false)
   }
@@ -1035,7 +1060,7 @@ ${seccion('📣', 'ESPECIALISTA EN PUBLICIDAD', 'pub', informes.publicidad)}
                   style={{ display: 'none' }} />
               </label>
               {pdfError && <div style={{ marginTop: 8, fontSize: 11, color: '#dc2626' }}>❌ {pdfError}</div>}
-              {pdfCargando && <div style={{ marginTop: 8, fontSize: 11, color: '#7c3aed' }}>Claude está leyendo el PDF y extrayendo la información de marca...</div>}
+              {pdfProgreso && <div style={{ marginTop: 8, fontSize: 11, color: '#7c3aed', fontWeight: 600 }}>{pdfProgreso}</div>}
             </div>
 
             {/* Campos manuales */}
