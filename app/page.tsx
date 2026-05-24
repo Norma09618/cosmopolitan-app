@@ -766,31 +766,34 @@ function MultiAgentes({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
   }
 
   async function handlePdf(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.type !== 'application/pdf') { setPdfError('Solo se aceptan archivos PDF'); return }
-    if (file.size > 20 * 1024 * 1024) { setPdfError('El PDF no puede superar 20 MB'); return }
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+
+    const invalidos = files.filter(f => f.type !== 'application/pdf')
+    if (invalidos.length > 0) { setPdfError('Solo se aceptan archivos PDF'); return }
+    const muyGrandes = files.filter(f => f.size > 20 * 1024 * 1024)
+    if (muyGrandes.length > 0) { setPdfError(`Archivo(s) muy grandes (máx 20MB): ${muyGrandes.map(f => f.name).join(', ')}`); return }
 
     setPdfCargando(true); setPdfError('')
     try {
-      // 1. Subir a Supabase Storage
-      const path = `brief-${Date.now()}.pdf`
-      const { error: upErr } = await sb.storage.from('marketing-docs').upload(path, file, { contentType: 'application/pdf' })
-      if (upErr) throw new Error('Error al subir el archivo: ' + upErr.message)
-      const { data: { publicUrl } } = sb.storage.from('marketing-docs').getPublicUrl(path)
+      // 1. Subir todos a Supabase Storage y convertir a base64 en paralelo
+      const procesados = await Promise.all(files.map(async (file) => {
+        const path = `brief-${Date.now()}-${file.name}`
+        await sb.storage.from('marketing-docs').upload(path, file, { contentType: 'application/pdf' })
+        const base64 = await new Promise<string>((res, rej) => {
+          const reader = new FileReader()
+          reader.onload = () => res((reader.result as string).split(',')[1])
+          reader.onerror = rej
+          reader.readAsDataURL(file)
+        })
+        return base64
+      }))
 
-      // 2. Convertir a base64 y enviar a Claude para extracción
-      const base64 = await new Promise<string>((res, rej) => {
-        const reader = new FileReader()
-        reader.onload = () => { const b64 = (reader.result as string).split(',')[1]; res(b64) }
-        reader.onerror = rej
-        reader.readAsDataURL(file)
-      })
-
+      // 2. Enviar todos los PDFs a Claude para extracción unificada
       const resp = await fetch('/api/extract-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pdf: base64 }),
+        body: JSON.stringify({ pdfs: procesados }),
       })
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
@@ -803,15 +806,15 @@ function MultiAgentes({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
         redes: data.data.redes || mkt.redes,
         objetivos: data.data.objetivos || '',
       }
-      setPdfNombre(file.name)
+      const nombres = files.map(f => f.name).join(', ')
+      setPdfNombre(nombres)
       setMkt(extracted)
-      // Guardar incluyendo URL del PDF
       await sb.from('marca_config').upsert({
-        id: 1, ...extracted, pdf_nombre: file.name, pdf_url: publicUrl,
+        id: 1, ...extracted, pdf_nombre: nombres,
         actualizado_en: new Date().toISOString()
       }, { onConflict: 'id' })
     } catch (err) {
-      setPdfError(err instanceof Error ? err.message : 'Error al procesar el PDF')
+      setPdfError(err instanceof Error ? err.message : 'Error al procesar los PDFs')
     }
     setPdfCargando(false)
   }
@@ -1023,12 +1026,12 @@ ${seccion('📣', 'ESPECIALISTA EN PUBLICIDAD', 'pub', informes.publicidad)}
             <div style={{ marginBottom: 18, padding: 16, background: '#faf5ff', borderRadius: 10, border: '1px dashed #c4b5fd' }}>
               <div style={{ fontWeight: 700, fontSize: 13, color: '#7c3aed', marginBottom: 6 }}>📄 Subir Brief de Marca (PDF)</div>
               <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 10 }}>
-                Sube tu documento de marca, brief o avatar y Claude extraerá la información automáticamente.
-                {pdfNombre && <span style={{ color: '#7c3aed', fontWeight: 600 }}> · Último: {pdfNombre}</span>}
+                Sube uno o varios documentos (brief, avatar, manual de marca, etc.) — Claude los leerá todos y sintetizará la información automáticamente.
+                {pdfNombre && <span style={{ color: '#7c3aed', fontWeight: 600 }}> · Cargados: {pdfNombre}</span>}
               </div>
               <label style={{ display: 'inline-block', padding: '8px 16px', background: pdfCargando ? '#9ca3af' : '#7c3aed', color: 'white', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: pdfCargando ? 'wait' : 'pointer' }}>
                 {pdfCargando ? '⏳ Procesando PDF...' : '📤 Seleccionar PDF'}
-                <input type="file" accept="application/pdf" onChange={handlePdf} disabled={pdfCargando}
+                <input type="file" accept="application/pdf" multiple onChange={handlePdf} disabled={pdfCargando}
                   style={{ display: 'none' }} />
               </label>
               {pdfError && <div style={{ marginTop: 8, fontSize: 11, color: '#dc2626' }}>❌ {pdfError}</div>}
