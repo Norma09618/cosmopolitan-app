@@ -238,20 +238,22 @@ function Dashboard({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; rec
         </div>
         <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden' }}>
           <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>🏆 Top 5 Servicios Más Rentables</div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>{['Servicio', 'PVP', 'Costo', 'Margen', 'Estado'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
-            <tbody>
-              {top5.map(s => (
-                <tr key={s.id}>
-                  <td style={{ ...td, fontWeight: 500 }}>{s.nombre}</td>
-                  <td style={td}>{f$(s.pvp)}</td>
-                  <td style={td}>{f$(s.ct)}</td>
-                  <td style={{ ...td, fontWeight: 700, color: s.m >= 0.3 ? '#059669' : s.m >= 0.1 ? '#d97706' : '#dc2626' }}>{fp(s.m)}</td>
-                  <td style={td}><Bdg m={s.m} pvp={s.pvp} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
+              <thead><tr>{['Servicio', 'PVP', 'Costo', 'Margen', 'Estado'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {top5.map(s => (
+                  <tr key={s.id}>
+                    <td style={{ ...td, fontWeight: 500 }}>{s.nombre}</td>
+                    <td style={td}>{f$(s.pvp)}</td>
+                    <td style={td}>{f$(s.ct)}</td>
+                    <td style={{ ...td, fontWeight: 700, color: s.m >= 0.3 ? '#059669' : s.m >= 0.1 ? '#d97706' : '#dc2626' }}>{fp(s.m)}</td>
+                    <td style={td}><Bdg m={s.m} pvp={s.pvp} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -712,7 +714,7 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
 }
 
 // ── RENTABILIDAD ──────────────────────────────────────────────────────────────
-function Rentabilidad({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
+function Rentabilidad({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; isMobile?: boolean }) {
   const t = tasaMin(svcs)
   const computed = svcs.filter(s => s.pvp > 0).map(s => {
     const ci = costoIns(s.id, ins, recs), cf = s.tiempo_min * t, ct = ci + cf, m = margen(s.pvp, ct)
@@ -732,33 +734,37 @@ function Rentabilidad({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
     <div style={{ padding: 20 }}>
       <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden', marginBottom: 16 }}>
         <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>📊 Resumen por Categoría</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{['Categoría', 'Servicios', 'Margen Promedio', 'Ingreso/Mes'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
-          <tbody>{bycat.map(c => (
-            <tr key={c.cat}>
-              <td style={{ ...td, fontWeight: 500 }}>{c.cat}</td>
-              <td style={td}>{c.count}</td>
-              <td style={{ ...td, fontWeight: 700, color: c.avgM >= 0.3 ? '#059669' : c.avgM >= 0.1 ? '#d97706' : '#dc2626' }}>{fp(c.avgM)}</td>
-              <td style={{ ...td, fontWeight: 600 }}>{fint(c.totalIng)}</td>
-            </tr>
-          ))}</tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 360 }}>
+            <thead><tr>{['Categoría', 'Servicios', 'Margen Promedio', 'Ingreso/Mes'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{bycat.map(c => (
+              <tr key={c.cat}>
+                <td style={{ ...td, fontWeight: 500 }}>{c.cat}</td>
+                <td style={td}>{c.count}</td>
+                <td style={{ ...td, fontWeight: 700, color: c.avgM >= 0.3 ? '#059669' : c.avgM >= 0.1 ? '#d97706' : '#dc2626' }}>{fp(c.avgM)}</td>
+                <td style={{ ...td, fontWeight: 600 }}>{fint(c.totalIng)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
         {[{ title: '🏆 Top 10 Más Rentables', rows: top10 }, { title: '⚠️ 10 A Revisar / En Pérdida', rows: bot10 }].map(({ title, rows }) => (
           <div key={title} style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden' }}>
             <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr>{['Servicio', 'PVP', 'Costo', 'Margen%'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
-              <tbody>{rows.map(s => (
-                <tr key={s.id}>
-                  <td style={{ ...td, fontWeight: 500 }}>{s.nombre}</td>
-                  <td style={td}>{f$(s.pvp)}</td>
-                  <td style={td}>{f$(s.ct)}</td>
-                  <td style={{ ...td, fontWeight: 700, color: s.m >= 0.3 ? '#059669' : s.m >= 0.1 ? '#d97706' : '#dc2626' }}>{fp(s.m)}</td>
-                </tr>
-              ))}</tbody>
-            </table>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 300 }}>
+                <thead><tr>{['Servicio', 'PVP', 'Costo', 'Margen%'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>{rows.map(s => (
+                  <tr key={s.id}>
+                    <td style={{ ...td, fontWeight: 500 }}>{s.nombre}</td>
+                    <td style={td}>{f$(s.pvp)}</td>
+                    <td style={td}>{f$(s.ct)}</td>
+                    <td style={{ ...td, fontWeight: 700, color: s.m >= 0.3 ? '#059669' : s.m >= 0.1 ? '#d97706' : '#dc2626' }}>{fp(s.m)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
           </div>
         ))}
       </div>
@@ -1526,11 +1532,12 @@ function RegistroMensual({ svcs, isMobile }: { svcs: Svc[]; isMobile?: boolean }
         const catReal = rows.reduce((s, r) => s + r.ingReal, 0)
         return (
           <div key={cat} style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden', marginBottom: 12 }}>
-            <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '8px 16px', fontSize: 11, fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '8px 16px', fontSize: 11, fontWeight: 700, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
               <span>{cat.toUpperCase()}</span>
               <span>Real: {fint(catReal)} / Proy: {fint(catProy)} · {fp(catProy > 0 ? catReal / catProy : 0)}</span>
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead><tr>{['Servicio','PVP','Cant.Proy.','Cant.Real','Ing.Proyectado','Ing.Real','Diferencia'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>
                 {rows.map(s => (
@@ -1550,6 +1557,7 @@ function RegistroMensual({ svcs, isMobile }: { svcs: Svc[]; isMobile?: boolean }
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )
       })}
@@ -1622,7 +1630,7 @@ export default function App() {
 
   const info = PAGE_INFO[page]
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* Sidebar — desktop normal, móvil drawer */}
       {!isMobile && (
         <Sidebar page={page} setPage={setPage} onLogout={doLogout} email={session.user.email || ''} />
@@ -1663,7 +1671,7 @@ export default function App() {
               {page === 'servicios' && <Servicios svcs={svcs} setSvcs={setSvcs} ins={ins} recs={recs} />}
               {page === 'insumos' && <Insumos ins={ins} setIns={setIns} />}
               {page === 'packs' && <Packs svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
-              {page === 'rentabilidad' && <Rentabilidad svcs={svcs} ins={ins} recs={recs} />}
+              {page === 'rentabilidad' && <Rentabilidad svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
               {page === 'registro' && <RegistroMensual svcs={svcs} isMobile={isMobile} />}
               {page === 'multiagentes' && <MultiAgentes svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
             </>
