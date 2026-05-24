@@ -738,11 +738,84 @@ function MultiAgentes({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[
   const [expandido, setExpandido] = React.useState({ contador: true, administrador: true, gerente: true, marketing: true, contenido: true, publicidad: true })
   const [showMkt, setShowMkt] = React.useState(false)
   const [mkt, setMkt] = React.useState<MktBase>({ avatar: '', tono: '', propuesta: '', redes: 'Instagram, Facebook, TikTok', objetivos: '' })
+  const [pdfNombre, setPdfNombre] = React.useState('')
+  const [pdfCargando, setPdfCargando] = React.useState(false)
+  const [pdfError, setPdfError] = React.useState('')
+  const [guardando, setGuardando] = React.useState(false)
 
+  // Cargar desde Supabase al montar
   React.useEffect(() => {
-    try { const s = localStorage.getItem('cosmo_mkt'); if (s) setMkt(JSON.parse(s)) } catch {}
+    sb.from('marca_config').select('*').eq('id', 1).single().then(({ data }) => {
+      if (data) {
+        setMkt({ avatar: data.avatar || '', tono: data.tono || '', propuesta: data.propuesta || '', redes: data.redes || 'Instagram, Facebook, TikTok', objetivos: data.objetivos || '' })
+        setPdfNombre(data.pdf_nombre || '')
+      }
+    })
   }, [])
-  function saveMkt(m: MktBase) { setMkt(m); try { localStorage.setItem('cosmo_mkt', JSON.stringify(m)) } catch {} }
+
+  async function saveMkt(m: MktBase, nombre?: string) {
+    setMkt(m)
+    setGuardando(true)
+    await sb.from('marca_config').upsert({
+      id: 1, avatar: m.avatar, tono: m.tono, propuesta: m.propuesta,
+      redes: m.redes, objetivos: m.objetivos,
+      pdf_nombre: nombre !== undefined ? nombre : pdfNombre,
+      actualizado_en: new Date().toISOString()
+    }, { onConflict: 'id' })
+    setGuardando(false)
+  }
+
+  async function handlePdf(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.type !== 'application/pdf') { setPdfError('Solo se aceptan archivos PDF'); return }
+    if (file.size > 20 * 1024 * 1024) { setPdfError('El PDF no puede superar 20 MB'); return }
+
+    setPdfCargando(true); setPdfError('')
+    try {
+      // 1. Subir a Supabase Storage
+      const path = `brief-${Date.now()}.pdf`
+      const { error: upErr } = await sb.storage.from('marketing-docs').upload(path, file, { contentType: 'application/pdf' })
+      if (upErr) throw new Error('Error al subir el archivo: ' + upErr.message)
+      const { data: { publicUrl } } = sb.storage.from('marketing-docs').getPublicUrl(path)
+
+      // 2. Convertir a base64 y enviar a Claude para extracción
+      const base64 = await new Promise<string>((res, rej) => {
+        const reader = new FileReader()
+        reader.onload = () => { const b64 = (reader.result as string).split(',')[1]; res(b64) }
+        reader.onerror = rej
+        reader.readAsDataURL(file)
+      })
+
+      const resp = await fetch('/api/extract-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdf: base64 }),
+      })
+      const data = await resp.json()
+      if (data.error) throw new Error(data.error)
+
+      // 3. Auto-llenar campos y guardar en Supabase
+      const extracted: MktBase = {
+        avatar: data.data.avatar || '',
+        tono: data.data.tono || '',
+        propuesta: data.data.propuesta || '',
+        redes: data.data.redes || mkt.redes,
+        objetivos: data.data.objetivos || '',
+      }
+      setPdfNombre(file.name)
+      setMkt(extracted)
+      // Guardar incluyendo URL del PDF
+      await sb.from('marca_config').upsert({
+        id: 1, ...extracted, pdf_nombre: file.name, pdf_url: publicUrl,
+        actualizado_en: new Date().toISOString()
+      }, { onConflict: 'id' })
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : 'Error al procesar el PDF')
+    }
+    setPdfCargando(false)
+  }
+
   const hasMkt = mkt.avatar.trim().length > 10 || mkt.objetivos.trim().length > 10
 
   function buildCtx() {
@@ -944,27 +1017,53 @@ ${seccion('📣', 'ESPECIALISTA EN PUBLICIDAD', 'pub', informes.publicidad)}
           <span style={{ color: '#9ca3af', fontSize: 14 }}>{showMkt ? '▲ Ocultar' : '▼ Configurar'}</span>
         </div>
         {showMkt && (
-          <div style={{ padding: 20, borderTop: '1px solid #f3f4f6', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            {([
-              { key: 'avatar', label: '👤 Avatar del cliente ideal', ph: 'Ej: Mujer 25-45 años, clase media-alta, Quito, interesada en belleza y autocuidado...', rows: 3 },
-              { key: 'tono', label: '🗣️ Tono de voz de la marca', ph: 'Ej: Profesional, cálido y aspiracional. Cercano pero elegante...', rows: 3 },
-              { key: 'propuesta', label: '💎 Propuesta de valor única', ph: 'Ej: Somos la peluquería premium de confianza en Ecuador con 10 años de experiencia...', rows: 3 },
-              { key: 'objetivos', label: '🎯 Objetivos de marketing', ph: 'Ej: Aumentar clientes 20%, fidelizar actuales, posicionarnos en Instagram...', rows: 3 },
-            ] as { key: keyof MktBase; label: string; ph: string; rows: number }[]).map(f => (
-              <div key={f.key}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>{f.label}</label>
-                <textarea value={mkt[f.key]} onChange={e => saveMkt({ ...mkt, [f.key]: e.target.value })} placeholder={f.ph} rows={f.rows}
-                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 8, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+          <div style={{ padding: 20, borderTop: '1px solid #f3f4f6' }}>
+
+            {/* Subir PDF */}
+            <div style={{ marginBottom: 18, padding: 16, background: '#faf5ff', borderRadius: 10, border: '1px dashed #c4b5fd' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: '#7c3aed', marginBottom: 6 }}>📄 Subir Brief de Marca (PDF)</div>
+              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 10 }}>
+                Sube tu documento de marca, brief o avatar y Claude extraerá la información automáticamente.
+                {pdfNombre && <span style={{ color: '#7c3aed', fontWeight: 600 }}> · Último: {pdfNombre}</span>}
               </div>
-            ))}
-            <div style={{ gridColumn: '1/-1' }}>
-              <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>📱 Redes sociales activas</label>
-              <input value={mkt.redes} onChange={e => saveMkt({ ...mkt, redes: e.target.value })} placeholder="Instagram, Facebook, TikTok, WhatsApp..."
-                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 8 }} />
+              <label style={{ display: 'inline-block', padding: '8px 16px', background: pdfCargando ? '#9ca3af' : '#7c3aed', color: 'white', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: pdfCargando ? 'wait' : 'pointer' }}>
+                {pdfCargando ? '⏳ Procesando PDF...' : '📤 Seleccionar PDF'}
+                <input type="file" accept="application/pdf" onChange={handlePdf} disabled={pdfCargando}
+                  style={{ display: 'none' }} />
+              </label>
+              {pdfError && <div style={{ marginTop: 8, fontSize: 11, color: '#dc2626' }}>❌ {pdfError}</div>}
+              {pdfCargando && <div style={{ marginTop: 8, fontSize: 11, color: '#7c3aed' }}>Claude está leyendo el PDF y extrayendo la información de marca...</div>}
             </div>
-            {hasMkt && <div style={{ gridColumn: '1/-1', padding: '8px 12px', background: '#f5f3ff', borderRadius: 8, fontSize: 12, color: '#7c3aed', fontWeight: 600 }}>
-              🚀 Con esta base de conocimiento se activarán 3 agentes adicionales: Estratega de Marketing, Planificador de Contenido y Especialista en Publicidad.
-            </div>}
+
+            {/* Campos manuales */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              {([
+                { key: 'avatar', label: '👤 Avatar del cliente ideal', ph: 'Ej: Mujer 25-45 años, clase media-alta, Quito, interesada en belleza y autocuidado...', rows: 3 },
+                { key: 'tono', label: '🗣️ Tono de voz de la marca', ph: 'Ej: Profesional, cálido y aspiracional. Cercano pero elegante...', rows: 3 },
+                { key: 'propuesta', label: '💎 Propuesta de valor única', ph: 'Ej: Somos la peluquería premium de confianza en Ecuador con 10 años de experiencia...', rows: 3 },
+                { key: 'objetivos', label: '🎯 Objetivos de marketing', ph: 'Ej: Aumentar clientes 20%, fidelizar actuales, posicionarnos en Instagram...', rows: 3 },
+              ] as { key: keyof MktBase; label: string; ph: string; rows: number }[]).map(f => (
+                <div key={f.key}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>{f.label}</label>
+                  <textarea value={mkt[f.key]} onChange={e => setMkt({ ...mkt, [f.key]: e.target.value })} placeholder={f.ph} rows={f.rows}
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 8, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+                </div>
+              ))}
+              <div style={{ gridColumn: '1/-1', display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 5 }}>📱 Redes sociales activas</label>
+                  <input value={mkt.redes} onChange={e => setMkt({ ...mkt, redes: e.target.value })} placeholder="Instagram, Facebook, TikTok, WhatsApp..."
+                    style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 8 }} />
+                </div>
+                <button onClick={() => saveMkt(mkt)} disabled={guardando}
+                  style={{ padding: '8px 16px', background: guardando ? '#9ca3af' : '#0f3460', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: guardando ? 'wait' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {guardando ? '💾 Guardando...' : '💾 Guardar'}
+                </button>
+              </div>
+              {hasMkt && <div style={{ gridColumn: '1/-1', padding: '8px 12px', background: '#f5f3ff', borderRadius: 8, fontSize: 12, color: '#7c3aed', fontWeight: 600 }}>
+                🚀 Base configurada — al generar el análisis se activarán los 3 agentes de marketing
+              </div>}
+            </div>
           </div>
         )}
       </div>
