@@ -573,13 +573,19 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
 
   useEffect(() => {
     async function load() {
-      const [{ data: pd }, { data: pi }] = await Promise.all([
-        sb.from('packs').select('*').eq('activo', true).order('id', { ascending: false }),
-        sb.from('pack_items').select('*'),
-      ])
-      setPacks(pd || [])
-      setPackItems(pi || [])
-      setLoadingPacks(false)
+      try {
+        const [r1, r2] = await Promise.all([
+          sb.from('packs').select('*').order('id', { ascending: false }),
+          sb.from('pack_items').select('*'),
+        ])
+        // Filter activo in memory to avoid issues if column behavior varies
+        setPacks((r1.data || []).filter((p: Pack) => p.activo !== false))
+        setPackItems(r2.data || [])
+      } catch {
+        // Silently fail — user can still create new packs
+      } finally {
+        setLoadingPacks(false)
+      }
     }
     load()
   }, [])
@@ -628,7 +634,7 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
             ))}
           </div>
         </div>
-        <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)', position: isMobile ? 'static' : 'sticky', top: 0, alignSelf: 'start' }}>
+        <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)', position: isMobile ? 'static' : 'sticky', top: 0, alignSelf: 'start', order: isMobile ? -1 : 0 }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 10 }}>🧾 Tu Pack</h3>
           <input type="text" value={packName} onChange={e => setPackName(e.target.value)} placeholder="Nombre del pack…"
             style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e5e7eb', padding: '8px 11px', borderRadius: 8, fontSize: 12.5, outline: 'none', marginBottom: 10 }} />
@@ -664,14 +670,7 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
             {!loadingPacks && <span style={{ marginLeft: 6, background: '#e0e7ff', color: '#3730a3', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 }}>{packs.length}</span>}
           </h3>
         </div>
-        {loadingPacks ? (
-          <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 24 }}>Cargando packs...</div>
-        ) : packs.length === 0 ? (
-          <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 32 }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>🎁</div>
-            No hay packs guardados aún.<br />¡Crea el primero arriba seleccionando servicios!
-          </div>
-        ) : (
+        {packs.length > 0 ? (
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(260px,1fr))', gap: 14 }}>
             {packs.map(pack => {
               const items = packItems.filter(pi => pi.pack_id === pack.id)
@@ -706,6 +705,13 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
                 </div>
               )
             })}
+          </div>
+        ) : loadingPacks ? (
+          <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 24 }}>⏳ Cargando packs...</div>
+        ) : (
+          <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 32 }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🎁</div>
+            No hay packs guardados aún.<br />¡Crea el primero seleccionando servicios arriba!
           </div>
         )}
       </div>
