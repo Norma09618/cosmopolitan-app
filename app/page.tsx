@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient, type Session } from '@supabase/supabase-js'
 
 const sb = createClient(
@@ -1304,8 +1305,10 @@ function AsistenteIA({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; r
   const [msgs, setMsgs] = useState<MsgIA[]>([{ role: 'assistant', content: '¡Hola! Soy **Cosmo IA** 🤖, tu asistente de negocios. Puedo analizar los datos de Cosmopolitan y ayudarte a tomar mejores decisiones. ¿En qué te puedo ayudar hoy?' }])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const endRef = React.useRef<HTMLDivElement>(null)
 
+  useEffect(() => { setMounted(true) }, [])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs])
 
   function buildContexto() {
@@ -1369,7 +1372,9 @@ ${computed.map(s => `  - ${s.nombre} | ${s.categoria} | PVP: ${f$(s.pvp)} | Cost
 
   const sugerencias = ['¿Qué servicio es el más rentable?', '¿Qué servicios están en pérdida?', '¿Cómo puedo mejorar el margen de Depilación?', '¿Cuál es mi ingreso potencial mensual?']
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <>
       {/* Botón flotante 🤖 */}
       {/* En móvil: solo cuando chat cerrado. En PC: siempre (actúa como toggle) */}
@@ -1442,7 +1447,8 @@ ${computed.map(s => `  - ${s.nombre} | ${s.categoria} | PVP: ${f$(s.pvp)} | Cost
 
         </div>
       )}
-    </>
+    </>,
+    document.body
   )
 }
 
