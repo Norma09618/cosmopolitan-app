@@ -606,10 +606,16 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
   }
 
   async function eliminar(packId: number) {
-    await sb.from('pack_items').delete().eq('pack_id', packId)
-    await sb.from('packs').update({ activo: false }).eq('id', packId)
+    // Actualización optimista: desaparece al instante en la UI
     setPacks(prev => prev.filter(p => p.id !== packId))
     setPackItems(prev => prev.filter(pi => pi.pack_id !== packId))
+    // Sincronizar con Supabase en segundo plano
+    try {
+      await sb.from('pack_items').delete().eq('pack_id', packId)
+      await sb.from('packs').delete().eq('id', packId)
+    } catch {
+      // Si falla, el pack reaparecerá en el próximo refresh — aceptable
+    }
   }
 
   return (
