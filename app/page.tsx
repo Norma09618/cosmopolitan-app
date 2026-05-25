@@ -1369,75 +1369,77 @@ ${computed.map(s => `  - ${s.nombre} | ${s.categoria} | PVP: ${f$(s.pvp)} | Cost
 
   const sugerencias = ['¿Qué servicio es el más rentable?', '¿Qué servicios están en pérdida?', '¿Cómo puedo mejorar el margen de Depilación?', '¿Cuál es mi ingreso potencial mensual?']
 
-  const panelStyle: React.CSSProperties = isMobile
-    ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'white', zIndex: 998, display: 'flex', flexDirection: 'column' }
-    : { position: 'fixed', bottom: 90, right: 24, width: 380, height: 520, background: 'white', borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,.2)', zIndex: 998, display: 'flex', flexDirection: 'column', overflow: 'hidden' }
-
   return (
     <>
-      {/* Botón flotante — oculto en móvil cuando el chat está abierto */}
-      {(!isMobile || !open) && (
-        <button onClick={() => setOpen(!open)}
-          style={{ position: 'fixed', bottom: isMobile ? 20 : 24, right: isMobile ? 16 : 24, width: 52, height: 52, borderRadius: '50%', background: '#0f3460', color: 'white', border: 'none', fontSize: 22, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,.3)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s' }}>
-          🤖
+      {/* Botón flotante 🤖 */}
+      {/* En móvil: solo cuando chat cerrado. En PC: siempre (actúa como toggle) */}
+      {(!open || !isMobile) && (
+        <button onClick={() => setOpen(v => !v)}
+          style={{ position: 'fixed', bottom: isMobile ? 20 : 24, right: isMobile ? 16 : 24, width: 52, height: 52, borderRadius: '50%', background: open ? '#dc2626' : '#0f3460', color: 'white', border: 'none', fontSize: open ? 20 : 22, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,.3)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {open ? '✕' : '🤖'}
         </button>
       )}
 
       {/* Panel de chat */}
       {open && (
-        <div style={panelStyle}>
+        <div style={isMobile
+          ? { position: 'fixed', top: 0, left: 0, width: '100%', height: '100dvh' as string, background: 'white', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+          : { position: 'fixed', bottom: 90, right: 24, width: 380, height: 520, background: 'white', borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,.2)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+        }>
+
           {/* Header */}
           <div style={{ background: '#1a1a2e', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#0f3460', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🤖</div>
-            <div>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#0f3460', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>🤖</div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ color: '#d4af37', fontWeight: 700, fontSize: 14 }}>Cosmo IA</div>
               <div style={{ color: '#9ca3af', fontSize: 11 }}>Asistente de negocios · Cosmopolitan</div>
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
               <button onClick={() => setOpen(false)}
-                style={{ background: 'rgba(255,255,255,.15)', border: 'none', color: 'white', borderRadius: '50%', width: 30, height: 30, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                style={{ background: 'rgba(255,255,255,.2)', border: 'none', color: 'white', borderRadius: '50%', width: 32, height: 32, fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                 ✕
               </button>
             </div>
           </div>
 
-          {/* Mensajes */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+          {/* Mensajes — área scrollable */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 0', display: 'flex', flexDirection: 'column', gap: 10, WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
             {msgs.map((m, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{ maxWidth: isMobile ? '88%' : '82%', padding: '9px 13px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', background: m.role === 'user' ? '#0f3460' : '#f3f4f6', color: m.role === 'user' ? 'white' : '#1a1a2e', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                <div style={{ maxWidth: '85%', padding: '10px 14px', borderRadius: m.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: m.role === 'user' ? '#0f3460' : '#f3f4f6', color: m.role === 'user' ? 'white' : '#1a1a2e', fontSize: 14, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
                   {m.content.replace(/\*\*(.*?)\*\*/g, '$1')}
                 </div>
               </div>
             ))}
             {loading && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div style={{ padding: '9px 13px', borderRadius: '14px 14px 14px 4px', background: '#f3f4f6', color: '#6b7280', fontSize: 13 }}>Analizando datos... ⏳</div>
+                <div style={{ padding: '10px 14px', borderRadius: '18px 18px 18px 4px', background: '#f3f4f6', color: '#6b7280', fontSize: 14 }}>Analizando datos... ⏳</div>
               </div>
             )}
-            <div ref={endRef} />
+            <div ref={endRef} style={{ height: 14 }} />
           </div>
 
-          {/* Sugerencias (solo si pocos mensajes) */}
+          {/* Sugerencias rápidas */}
           {msgs.length <= 1 && (
-            <div style={{ padding: '0 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 6, flexShrink: 0 }}>
+            <div style={{ padding: '10px 14px', display: 'flex', flexWrap: 'wrap', gap: 6, flexShrink: 0 }}>
               {sugerencias.map(s => (
-                <button key={s} onClick={() => { setInput(s); }} style={{ padding: '5px 10px', background: '#e0e7ff', color: '#3730a3', border: 'none', borderRadius: 20, fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>{s}</button>
+                <button key={s} onClick={() => setInput(s)} style={{ padding: '6px 12px', background: '#e0e7ff', color: '#3730a3', border: 'none', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>{s}</button>
               ))}
             </div>
           )}
 
-          {/* Input */}
-          <div style={{ padding: '10px 14px', paddingBottom: isMobile ? 'max(14px, env(safe-area-inset-bottom, 14px))' : '10px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 8, flexShrink: 0 }}>
+          {/* Input fijo al fondo */}
+          <div style={{ padding: '12px 14px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: 8, flexShrink: 0, background: 'white' }}>
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && enviar()}
               placeholder="Pregunta sobre el negocio..." disabled={loading}
-              style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none' }} />
+              style={{ flex: 1, border: '1.5px solid #e5e7eb', borderRadius: 12, padding: '11px 14px', fontSize: 15, outline: 'none', background: '#f9fafb' }} />
             <button onClick={enviar} disabled={loading || !input.trim()}
-              style={{ padding: '10px 16px', background: input.trim() && !loading ? '#d4af37' : '#e5e7eb', color: '#1a1a2e', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>
+              style={{ padding: '11px 18px', background: input.trim() && !loading ? '#d4af37' : '#e5e7eb', color: '#1a1a2e', border: 'none', borderRadius: 12, cursor: input.trim() ? 'pointer' : 'default', fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
               ➤
             </button>
           </div>
+
         </div>
       )}
     </>
