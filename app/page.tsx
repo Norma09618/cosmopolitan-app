@@ -1299,7 +1299,7 @@ ${seccion('📣', 'ESPECIALISTA EN PUBLICIDAD', 'pub', informes.publicidad)}
 // ── ASISTENTE IA ─────────────────────────────────────────────────────────────
 interface MsgIA { role: 'user' | 'assistant'; content: string }
 
-function AsistenteIA({ svcs, ins, recs }: { svcs: Svc[]; ins: Ins[]; recs: Rec[] }) {
+function AsistenteIA({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; isMobile?: boolean }) {
   const [open, setOpen] = useState(false)
   const [msgs, setMsgs] = useState<MsgIA[]>([{ role: 'assistant', content: '¡Hola! Soy **Cosmo IA** 🤖, tu asistente de negocios. Puedo analizar los datos de Cosmopolitan y ayudarte a tomar mejores decisiones. ¿En qué te puedo ayudar hoy?' }])
   const [input, setInput] = useState('')
@@ -1369,32 +1369,44 @@ ${computed.map(s => `  - ${s.nombre} | ${s.categoria} | PVP: ${f$(s.pvp)} | Cost
 
   const sugerencias = ['¿Qué servicio es el más rentable?', '¿Qué servicios están en pérdida?', '¿Cómo puedo mejorar el margen de Depilación?', '¿Cuál es mi ingreso potencial mensual?']
 
+  const panelStyle: React.CSSProperties = isMobile
+    ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'white', zIndex: 998, display: 'flex', flexDirection: 'column' }
+    : { position: 'fixed', bottom: 90, right: 24, width: 380, height: 520, background: 'white', borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,.2)', zIndex: 998, display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+
   return (
     <>
-      {/* Botón flotante */}
-      <button onClick={() => setOpen(!open)}
-        style={{ position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: '50%', background: open ? '#dc2626' : '#0f3460', color: 'white', border: 'none', fontSize: 24, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,.3)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s' }}>
-        {open ? '✕' : '🤖'}
-      </button>
+      {/* Botón flotante — oculto en móvil cuando el chat está abierto */}
+      {(!isMobile || !open) && (
+        <button onClick={() => setOpen(!open)}
+          style={{ position: 'fixed', bottom: isMobile ? 20 : 24, right: isMobile ? 16 : 24, width: 52, height: 52, borderRadius: '50%', background: '#0f3460', color: 'white', border: 'none', fontSize: 22, cursor: 'pointer', boxShadow: '0 4px 20px rgba(0,0,0,.3)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s' }}>
+          🤖
+        </button>
+      )}
 
       {/* Panel de chat */}
       {open && (
-        <div style={{ position: 'fixed', bottom: 90, right: 24, width: 380, height: 520, background: 'white', borderRadius: 16, boxShadow: '0 8px 40px rgba(0,0,0,.2)', zIndex: 998, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={panelStyle}>
           {/* Header */}
-          <div style={{ background: '#1a1a2e', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ background: '#1a1a2e', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#0f3460', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🤖</div>
             <div>
               <div style={{ color: '#d4af37', fontWeight: 700, fontSize: 14 }}>Cosmo IA</div>
               <div style={{ color: '#9ca3af', fontSize: 11 }}>Asistente de negocios · Cosmopolitan</div>
             </div>
-            <div style={{ marginLeft: 'auto', width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+              <button onClick={() => setOpen(false)}
+                style={{ background: 'rgba(255,255,255,.15)', border: 'none', color: 'white', borderRadius: '50%', width: 30, height: 30, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* Mensajes */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
             {msgs.map((m, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{ maxWidth: '82%', padding: '9px 13px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', background: m.role === 'user' ? '#0f3460' : '#f3f4f6', color: m.role === 'user' ? 'white' : '#1a1a2e', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                <div style={{ maxWidth: isMobile ? '88%' : '82%', padding: '9px 13px', borderRadius: m.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', background: m.role === 'user' ? '#0f3460' : '#f3f4f6', color: m.role === 'user' ? 'white' : '#1a1a2e', fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
                   {m.content.replace(/\*\*(.*?)\*\*/g, '$1')}
                 </div>
               </div>
@@ -1409,7 +1421,7 @@ ${computed.map(s => `  - ${s.nombre} | ${s.categoria} | PVP: ${f$(s.pvp)} | Cost
 
           {/* Sugerencias (solo si pocos mensajes) */}
           {msgs.length <= 1 && (
-            <div style={{ padding: '0 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ padding: '0 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 6, flexShrink: 0 }}>
               {sugerencias.map(s => (
                 <button key={s} onClick={() => { setInput(s); }} style={{ padding: '5px 10px', background: '#e0e7ff', color: '#3730a3', border: 'none', borderRadius: 20, fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>{s}</button>
               ))}
@@ -1417,12 +1429,12 @@ ${computed.map(s => `  - ${s.nombre} | ${s.categoria} | PVP: ${f$(s.pvp)} | Cost
           )}
 
           {/* Input */}
-          <div style={{ padding: '10px 14px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 8 }}>
+          <div style={{ padding: '10px 14px', paddingBottom: isMobile ? 'max(14px, env(safe-area-inset-bottom, 14px))' : '10px', borderTop: '1px solid #f3f4f6', display: 'flex', gap: 8, flexShrink: 0 }}>
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && enviar()}
               placeholder="Pregunta sobre el negocio..." disabled={loading}
-              style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', fontSize: 13, outline: 'none' }} />
+              style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', fontSize: 14, outline: 'none' }} />
             <button onClick={enviar} disabled={loading || !input.trim()}
-              style={{ padding: '8px 14px', background: input.trim() && !loading ? '#d4af37' : '#e5e7eb', color: '#1a1a2e', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+              style={{ padding: '10px 16px', background: input.trim() && !loading ? '#d4af37' : '#e5e7eb', color: '#1a1a2e', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 700, fontSize: 15 }}>
               ➤
             </button>
           </div>
@@ -1544,12 +1556,12 @@ function RegistroMensual({ svcs, isMobile }: { svcs: Svc[]; isMobile?: boolean }
         const catProy = rows.reduce((s, r) => s + r.ingProy, 0)
         const catReal = rows.reduce((s, r) => s + r.ingReal, 0)
         return (
-          <div key={cat} style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden', marginBottom: 12 }}>
-            <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '8px 16px', fontSize: 11, fontWeight: 700, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+          <div key={cat} style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', marginBottom: 12 }}>
+            <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '8px 16px', fontSize: 11, fontWeight: 700, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4, borderRadius: '12px 12px 0 0' }}>
               <span>{cat.toUpperCase()}</span>
               <span>Real: {fint(catReal)} / Proy: {fint(catProy)} · {fp(catProy > 0 ? catReal / catProy : 0)}</span>
             </div>
-            <div style={{ overflowX: 'auto' }}>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
               <thead><tr>{['Servicio','PVP','Cant.Proy.','Cant.Real','Ing.Proyectado','Ing.Real','Diferencia'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>
@@ -1712,7 +1724,7 @@ export default function App() {
           )}
         </div>
       </div>
-      {session && <AsistenteIA svcs={svcs} ins={ins} recs={recs} />}
+      {session && <AsistenteIA svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
     </div>
   )
 }
