@@ -237,9 +237,9 @@ function Dashboard({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; rec
               </div>
             ))}
         </div>
-        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden' }}>
-          <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>🏆 Top 5 Servicios Más Rentables</div>
-          <div style={{ overflowX: 'auto' }}>
+        <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+          <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', borderRadius: '12px 12px 0 0' }}>🏆 Top 5 Servicios Más Rentables</div>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
               <thead><tr>{['Servicio', 'PVP', 'Costo', 'Margen', 'Estado'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
               <tbody>
@@ -745,10 +745,10 @@ function Rentabilidad({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; 
 
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>📊 Resumen por Categoría</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 360 }}>
+      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', marginBottom: 16 }}>
+        <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', borderRadius: '12px 12px 0 0' }}>📊 Resumen por Categoría</div>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
             <thead><tr>{['Categoría', 'Servicios', 'Margen Promedio', 'Ingreso/Mes'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>{bycat.map(c => (
               <tr key={c.cat}>
@@ -763,10 +763,10 @@ function Rentabilidad({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; 
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 14 }}>
         {[{ title: '🏆 Top 10 Más Rentables', rows: top10 }, { title: '⚠️ 10 A Revisar / En Pérdida', rows: bot10 }].map(({ title, rows }) => (
-          <div key={title} style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)', overflow: 'hidden' }}>
-            <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{title}</div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 300 }}>
+          <div key={title} style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+            <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', borderRadius: '12px 12px 0 0' }}>{title}</div>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 340 }}>
                 <thead><tr>{['Servicio', 'PVP', 'Costo', 'Margen%'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
                 <tbody>{rows.map(s => (
                   <tr key={s.id}>
