@@ -139,7 +139,8 @@ function Sidebar({ page, setPage, onLogout, email, isMobile, isOpen, onClose }: 
   function navClick(id: Page) { setPage(id); if (isMobile && onClose) onClose() }
 
   const drawer = isMobile ? {
-    position: 'fixed' as const, top: 0, left: 0, zIndex: 300, height: '100vh',
+    position: 'fixed' as const, top: 0, left: 0, zIndex: 300,
+    height: '100dvh' as string,
     transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
     transition: 'transform .25s cubic-bezier(.4,0,.2,1)',
     boxShadow: isOpen ? '4px 0 24px rgba(0,0,0,.4)' : 'none',
@@ -151,7 +152,7 @@ function Sidebar({ page, setPage, onLogout, email, isMobile, isOpen, onClose }: 
       {isMobile && isOpen && (
         <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 299 }} />
       )}
-      <div style={{ background: '#1a1a2e', width: 230, flexShrink: 0, display: 'flex', flexDirection: 'column', height: '100vh', ...drawer }}>
+      <div style={{ background: '#1a1a2e', width: 230, flexShrink: 0, display: 'flex', flexDirection: 'column', height: isMobile ? '100dvh' as string : '100vh', ...drawer }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ color: '#d4af37', fontSize: 17, fontWeight: 800 }}>COSMOPOLITAN</div>
@@ -1598,6 +1599,7 @@ export default function App() {
   const [dataLoading, setDataLoading] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showLogout, setShowLogout] = useState(false)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1669,7 +1671,27 @@ export default function App() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <div style={{ fontSize: 11, color: '#9ca3af' }}>🟢</div>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#0f3460', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11, fontWeight: 700 }}>NS</div>
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowLogout(v => !v)}
+                style={{ width: 32, height: 32, borderRadius: '50%', background: '#0f3460', border: 'none', color: 'white', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                title="Cuenta">
+                NS
+              </button>
+              {showLogout && (
+                <>
+                  <div onClick={() => setShowLogout(false)} style={{ position: 'fixed', inset: 0, zIndex: 498 }} />
+                  <div style={{ position: 'absolute', right: 0, top: 38, background: 'white', borderRadius: 12, boxShadow: '0 4px 20px rgba(0,0,0,.18)', padding: 8, minWidth: 210, zIndex: 499 }}>
+                    <div style={{ padding: '8px 12px', fontSize: 11, color: '#6b7280', borderBottom: '1px solid #f3f4f6', marginBottom: 6, wordBreak: 'break-all' }}>
+                      {session.user.email}
+                    </div>
+                    <button onClick={() => { doLogout(); setShowLogout(false) }}
+                      style={{ width: '100%', padding: '9px 12px', background: 'none', border: 'none', color: '#dc2626', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      🚪 Cerrar sesión
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
         <div style={{ flex: 1, overflow: 'auto', background: '#f0f2f5' }}>
