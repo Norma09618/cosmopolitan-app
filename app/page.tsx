@@ -10,7 +10,7 @@ const sb = createClient(
 )
 
 // ── TYPES ─────────────────────────────────────────────────────────────────────
-type Page = 'dashboard' | 'servicios' | 'insumos' | 'packs' | 'rentabilidad' | 'registro' | 'multiagentes'
+type Page = 'dashboard' | 'servicios' | 'insumos' | 'productos' | 'packs' | 'rentabilidad' | 'registro' | 'multiagentes'
 
 interface Svc {
   id: number; nombre: string; categoria: string; pvp: number
@@ -24,6 +24,8 @@ interface Rec { servicio_id: number; insumo_id: number; cantidad: number }
 interface VentaMes { id: number; servicio_id: number; mes: number; anio: number; cantidad_real: number }
 interface Pack { id: number; nombre: string; descuento: number; activo: boolean }
 interface PackItem { pack_id: number; servicio_id: number }
+interface Producto { id: number; nombre: string; categoria: string; pvp: number; costo: number; stock_actual: number; activo: boolean }
+interface PackProducto { pack_id: number; producto_id: number }
 
 // ── COST ENGINE ───────────────────────────────────────────────────────────────
 const CF = 9110.07
@@ -127,6 +129,7 @@ const NAV: { id: Page; icon: string; label: string; section: string }[] = [
   { id: 'dashboard', icon: '📊', label: 'Dashboard', section: 'PRINCIPAL' },
   { id: 'servicios', icon: '✂️', label: 'Servicios', section: '' },
   { id: 'insumos', icon: '🧴', label: 'Insumos', section: '' },
+  { id: 'productos', icon: '🛍️', label: 'Productos', section: '' },
   { id: 'packs', icon: '🎁', label: 'Crear Packs', section: 'VENTAS' },
   { id: 'rentabilidad', icon: '💰', label: 'Rentabilidad', section: 'ANÁLISIS' },
   { id: 'registro', icon: '📅', label: 'Registro Mensual', section: '' },
@@ -554,21 +557,163 @@ function Insumos({ ins, setIns }: { ins: Ins[]; setIns: (i: Ins[]) => void }) {
   )
 }
 
+// ── PRODUCTOS ─────────────────────────────────────────────────────────────────
+const PROD_CATS = ['Shampoos','Acondicionadores','Máscaras','Tratamientos','Ceras y Styling','Sprays y Lacas','Aceites y Serums','Otros']
+
+function Productos({ productos, setProductos }: { productos: Producto[]; setProductos: (p: Producto[]) => void }) {
+  const [q, setQ] = useState('')
+  const [cat, setCat] = useState('')
+  const [modal, setModal] = useState<{ open: boolean; mode: 'new'|'edit'; data: Partial<Producto>; err: string }>({ open: false, mode: 'new', data: {}, err: '' })
+  const [saving, setSaving] = useState(false)
+
+  const cats = [...new Set(productos.map(p => p.categoria))].sort()
+  const rows = productos.filter(p => {
+    if (q && !p.nombre.toLowerCase().includes(q.toLowerCase()) && !p.categoria.toLowerCase().includes(q.toLowerCase())) return false
+    if (cat && p.categoria !== cat) return false
+    return true
+  })
+
+  function updF(f: string, v: unknown) { setModal(prev => ({ ...prev, data: { ...prev.data, [f]: v } })) }
+
+  async function save() {
+    const d = modal.data
+    if (!d.nombre?.trim() || !d.categoria) { setModal(m => ({ ...m, err: 'Completa nombre y categoría.' })); return }
+    setSaving(true)
+    const payload = { nombre: d.nombre, categoria: d.categoria, pvp: d.pvp || 0, costo: d.costo || 0, stock_actual: d.stock_actual || 0, activo: true }
+    if (modal.mode === 'new') {
+      const { data, error } = await sb.from('productos').insert([payload]).select().single()
+      if (error) { setModal(m => ({ ...m, err: error.message })); setSaving(false); return }
+      setProductos([...productos, data])
+    } else {
+      const { error } = await sb.from('productos').update(payload).eq('id', d.id!)
+      if (error) { setModal(m => ({ ...m, err: error.message })); setSaving(false); return }
+      setProductos(productos.map(p => p.id === d.id ? { ...p, ...payload } as Producto : p))
+    }
+    setSaving(false); setModal(m => ({ ...m, open: false }))
+  }
+
+  const inp = (v: string|number, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, placeholder='', type='text') => (
+    <input type={type} value={v} onChange={onChange} placeholder={placeholder}
+      style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e5e7eb', padding: '8px 11px', borderRadius: 8, fontSize: 12.5, outline: 'none' }} />
+  )
+  const th = { background: '#0f3460', color: '#d4af37', padding: '10px 12px', fontSize: 11.5, fontWeight: 600, textAlign: 'left' as const }
+  const td = { padding: '8px 12px', fontSize: 12.5, borderBottom: '1px solid #f3f4f6' }
+  const margen = (p: Producto) => p.pvp > 0 ? ((p.pvp - p.costo) / p.pvp * 100).toFixed(1) + '%' : 'N/A'
+  const margenColor = (p: Producto) => { const m = p.pvp > 0 ? (p.pvp - p.costo) / p.pvp : -1; return m >= 0.3 ? '#059669' : m >= 0.1 ? '#d97706' : '#dc2626' }
+
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+        <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid #f3f4f6', borderRadius: '12px 12px 0 0' }}>
+          <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="🔍  Buscar producto…"
+            style={{ width: 220, border: '1px solid #e5e7eb', padding: '7px 11px', borderRadius: 8, fontSize: 12.5, outline: 'none' }} />
+          <select value={cat} onChange={e => setCat(e.target.value)} style={{ border: '1px solid #e5e7eb', padding: '7px 11px', borderRadius: 8, fontSize: 12.5 }}>
+            <option value="">Todas las categorías</option>{cats.map(c => <option key={c}>{c}</option>)}
+          </select>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: '#6b7280' }}>{rows.length} productos</span>
+            <button onClick={() => setModal({ open: true, mode: 'new', data: { pvp: 0, costo: 0, stock_actual: 0 }, err: '' })}
+              style={{ padding: '7px 14px', background: '#d4af37', color: '#1a1a2e', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+              + Agregar Producto
+            </button>
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+            <thead><tr>{['#','Nombre','Categoría','PVP $','Costo $','Margen','Stock',''].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {rows.map(p => (
+                <tr key={p.id}>
+                  <td style={{ ...td, color: '#9ca3af' }}>{p.id}</td>
+                  <td style={{ ...td, fontWeight: 500 }}>{p.nombre}</td>
+                  <td style={td}><span style={{ background: '#fef9c3', color: '#92400e', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 700 }}>{p.categoria}</span></td>
+                  <td style={{ ...td, fontWeight: 700 }}>${p.pvp.toFixed(2)}</td>
+                  <td style={{ ...td, color: '#6b7280' }}>${p.costo.toFixed(2)}</td>
+                  <td style={{ ...td, fontWeight: 700, color: margenColor(p) }}>{margen(p)}</td>
+                  <td style={td}>{p.stock_actual}</td>
+                  <td style={td}><button onClick={() => setModal({ open: true, mode: 'edit', data: { ...p }, err: '' })}
+                    style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 12 }}>✏️</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {modal.open && (
+        <Modal onClose={() => setModal(m => ({ ...m, open: false }))}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e', margin: 0 }}>{modal.mode === 'new' ? '🛍️ Nuevo Producto' : '✏️ Editar Producto'}</h2>
+            <button onClick={() => setModal(m => ({ ...m, open: false }))} style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6b7280' }}>✕</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ gridColumn: '1/-1' }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>NOMBRE *</label>
+              {inp(modal.data.nombre || '', e => updF('nombre', e.target.value), 'Ej: Shampoo Color Glam 250ml')}
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>CATEGORÍA *</label>
+              <select value={modal.data.categoria || ''} onChange={e => updF('categoria', e.target.value)}
+                style={{ width: '100%', border: '1px solid #e5e7eb', padding: '8px 11px', borderRadius: 8, fontSize: 12.5 }}>
+                <option value="">Seleccionar…</option>{PROD_CATS.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>STOCK ACTUAL</label>
+              {inp(modal.data.stock_actual ?? '', e => updF('stock_actual', parseInt(e.target.value) || 0), '0', 'number')}
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>PVP $ (precio venta)</label>
+              {inp(modal.data.pvp ?? '', e => updF('pvp', parseFloat(e.target.value) || 0), '0.00', 'number')}
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>COSTO $</label>
+              {inp(modal.data.costo ?? '', e => updF('costo', parseFloat(e.target.value) || 0), '0.00', 'number')}
+            </div>
+          </div>
+          {modal.data.pvp && modal.data.costo !== undefined && modal.data.pvp > 0 && (
+            <div style={{ background: '#f8f9ff', border: '1.5px solid #e0e7ff', borderRadius: 10, padding: 12, marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4 }}>MARGEN</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: (modal.data.pvp - (modal.data.costo||0)) / modal.data.pvp >= 0.3 ? '#059669' : '#d97706' }}>
+                {(((modal.data.pvp - (modal.data.costo||0)) / modal.data.pvp) * 100).toFixed(1)}%
+              </div>
+            </div>
+          )}
+          {modal.err && <div style={{ color: '#dc2626', fontSize: 12, marginTop: 8 }}>{modal.err}</div>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+            <button onClick={() => setModal(m => ({ ...m, open: false }))} style={{ flex: 1, padding: 9, background: 'none', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer', fontSize: 12.5 }}>Cancelar</button>
+            <button onClick={save} disabled={saving} style={{ flex: 1, padding: 9, background: '#d4af37', color: '#1a1a2e', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12.5, fontWeight: 700 }}>
+              {saving ? 'Guardando...' : '💾 Guardar'}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 // ── PACKS ─────────────────────────────────────────────────────────────────────
-function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; isMobile?: boolean }) {
+function Packs({ svcs, ins, recs, productos, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; productos: Producto[]; isMobile?: boolean }) {
   const [sel, setSel] = useState<number[]>([])
+  const [selProd, setSelProd] = useState<number[]>([])
+  const [tab, setTab] = useState<'servicios'|'productos'>('servicios')
   const [packName, setPackName] = useState('')
   const [filterCat, setFilterCat] = useState('')
+  const [filterCatProd, setFilterCatProd] = useState('')
   const [msg, setMsg] = useState('')
   const [packs, setPacks] = useState<Pack[]>([])
   const [packItems, setPackItems] = useState<PackItem[]>([])
+  const [packProductos, setPackProductos] = useState<PackProducto[]>([])
   const [loadingPacks, setLoadingPacks] = useState(true)
   const t = tasaMin(svcs)
   const cats = [...new Set(svcs.map(s => s.categoria))].sort()
+  const catsProd = [...new Set(productos.map(p => p.categoria))].sort()
   const filtered = svcs.filter(s => !filterCat || s.categoria === filterCat)
+  const filteredProd = productos.filter(p => !filterCatProd || p.categoria === filterCatProd)
   const selSvcs = svcs.filter(s => sel.includes(s.id))
-  const totalNormal = selSvcs.reduce((s, v) => s + v.pvp, 0)
-  const totalCosto = selSvcs.reduce((s, v) => { const ci = costoIns(v.id, ins, recs); return s + ci + v.tiempo_min * t }, 0)
+  const selProds = productos.filter(p => selProd.includes(p.id))
+  const totalNormal = selSvcs.reduce((s, v) => s + v.pvp, 0) + selProds.reduce((s, p) => s + p.pvp, 0)
+  const totalCosto = selSvcs.reduce((s, v) => { const ci = costoIns(v.id, ins, recs); return s + ci + v.tiempo_min * t }, 0) + selProds.reduce((s, p) => s + p.costo, 0)
   const totalTiempo = selSvcs.reduce((s, v) => s + v.tiempo_min, 0)
   const precioPack = totalNormal * 0.80
   const mPack = precioPack > 0 ? (precioPack - totalCosto) / precioPack : 0
@@ -576,15 +721,17 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
   useEffect(() => {
     async function load() {
       try {
-        const [r1, r2] = await Promise.all([
+        const [r1, r2, r3] = await Promise.all([
           sb.from('packs').select('*').order('id', { ascending: false }),
           sb.from('pack_items').select('*'),
+          sb.from('pack_productos').select('*'),
         ])
         // Filter activo in memory to avoid issues if column behavior varies
         setPacks((r1.data || []).filter((p: Pack) => p.activo !== false))
         setPackItems(r2.data || [])
+        setPackProductos(r3.data || [])
       } catch {
-        // Silently fail — user can still create new packs
+        // Silently fail
       } finally {
         setLoadingPacks(false)
       }
@@ -593,31 +740,33 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
   }, [])
 
   function toggle(id: number) { setSel(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) }
+  function toggleProd(id: number) { setSelProd(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]) }
 
   async function guardar() {
-    if (!packName.trim() || sel.length < 2) { setMsg('Escribe un nombre y selecciona al menos 2 servicios.'); return }
+    if (!packName.trim() || (sel.length + selProd.length) < 2) { setMsg('Escribe un nombre y selecciona al menos 2 ítems.'); return }
     const { data, error } = await sb.from('packs').insert([{ nombre: packName, descuento: 0.20, activo: true }]).select().single()
     if (error || !data) { setMsg('Error al guardar: ' + error?.message); return }
     const newItems = sel.map(sid => ({ pack_id: data.id, servicio_id: sid }))
-    await sb.from('pack_items').insert(newItems)
+    const newProds = selProd.map(pid => ({ pack_id: data.id, producto_id: pid }))
+    if (newItems.length) await sb.from('pack_items').insert(newItems)
+    if (newProds.length) await sb.from('pack_productos').insert(newProds)
     setPacks(prev => [data, ...prev])
     setPackItems(prev => [...prev, ...newItems])
+    setPackProductos(prev => [...prev, ...newProds])
     setMsg(`✅ Pack "${packName}" guardado`)
-    setSel([]); setPackName('')
+    setSel([]); setSelProd([]); setPackName('')
     setTimeout(() => setMsg(''), 3000)
   }
 
   async function eliminar(packId: number) {
-    // Actualización optimista: desaparece al instante en la UI
     setPacks(prev => prev.filter(p => p.id !== packId))
     setPackItems(prev => prev.filter(pi => pi.pack_id !== packId))
-    // Sincronizar con Supabase en segundo plano
+    setPackProductos(prev => prev.filter(pp => pp.pack_id !== packId))
     try {
+      await sb.from('pack_productos').delete().eq('pack_id', packId)
       await sb.from('pack_items').delete().eq('pack_id', packId)
       await sb.from('packs').delete().eq('id', packId)
-    } catch {
-      // Si falla, el pack reaparecerá en el próximo refresh — aceptable
-    }
+    } catch { }
   }
 
   return (
@@ -626,29 +775,68 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 320px', gap: 16, marginBottom: 20 }}>
         <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 8 }}>🛠️ Constructor de Pack Personalizado</h3>
-          <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>Selecciona 2 o más servicios:</p>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-            <button onClick={() => setFilterCat('')} style={{ padding: '5px 10px', background: !filterCat ? '#0f3460' : 'white', color: !filterCat ? 'white' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>Todos</button>
-            {cats.map(c => <button key={c} onClick={() => setFilterCat(c === filterCat ? '' : c)} style={{ padding: '5px 10px', background: filterCat === c ? '#0f3460' : 'white', color: filterCat === c ? 'white' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>{c}</button>)}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: 8, maxHeight: 400, overflowY: 'auto' }}>
-            {filtered.map(s => (
-              <div key={s.id} onClick={() => toggle(s.id)}
-                style={{ background: sel.includes(s.id) ? '#fffbeb' : 'white', border: `2px solid ${sel.includes(s.id) ? '#d4af37' : '#e5e7eb'}`, borderRadius: 10, padding: 10, cursor: 'pointer', fontSize: 12 }}>
-                <div style={{ fontWeight: 500, marginBottom: 4 }}>{s.nombre}</div>
-                <div style={{ color: '#6b7280', fontSize: 11 }}>{s.categoria}</div>
-                <div style={{ fontWeight: 700, color: '#1a1a2e', marginTop: 4 }}>{f$(s.pvp)}</div>
-              </div>
+          {/* Tabs Servicios / Productos */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {(['servicios','productos'] as const).map(t => (
+              <button key={t} onClick={() => { setTab(t); setFilterCat(''); setFilterCatProd('') }}
+                style={{ padding: '5px 14px', background: tab === t ? '#0f3460' : 'white', color: tab === t ? 'white' : '#374151', border: '1px solid #e5e7eb', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                {t === 'servicios' ? `✂️ Servicios (${sel.length})` : `🛍️ Productos (${selProd.length})`}
+              </button>
             ))}
           </div>
+          <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>Selecciona 2 o más ítems en total:</p>
+          {tab === 'servicios' ? (
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                <button onClick={() => setFilterCat('')} style={{ padding: '5px 10px', background: !filterCat ? '#0f3460' : 'white', color: !filterCat ? 'white' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>Todos</button>
+                {cats.map(c => <button key={c} onClick={() => setFilterCat(c === filterCat ? '' : c)} style={{ padding: '5px 10px', background: filterCat === c ? '#0f3460' : 'white', color: filterCat === c ? 'white' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>{c}</button>)}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: 8, maxHeight: 380, overflowY: 'auto' }}>
+                {filtered.map(s => (
+                  <div key={s.id} onClick={() => toggle(s.id)}
+                    style={{ background: sel.includes(s.id) ? '#fffbeb' : 'white', border: `2px solid ${sel.includes(s.id) ? '#d4af37' : '#e5e7eb'}`, borderRadius: 10, padding: 10, cursor: 'pointer', fontSize: 12 }}>
+                    <div style={{ fontWeight: 500, marginBottom: 4 }}>{s.nombre}</div>
+                    <div style={{ color: '#6b7280', fontSize: 11 }}>{s.categoria}</div>
+                    <div style={{ fontWeight: 700, color: '#1a1a2e', marginTop: 4 }}>{f$(s.pvp)}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                <button onClick={() => setFilterCatProd('')} style={{ padding: '5px 10px', background: !filterCatProd ? '#0f3460' : 'white', color: !filterCatProd ? 'white' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>Todos</button>
+                {catsProd.map(c => <button key={c} onClick={() => setFilterCatProd(c === filterCatProd ? '' : c)} style={{ padding: '5px 10px', background: filterCatProd === c ? '#d4af37' : 'white', color: filterCatProd === c ? '#1a1a2e' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>{c}</button>)}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: 8, maxHeight: 380, overflowY: 'auto' }}>
+                {filteredProd.map(p => (
+                  <div key={p.id} onClick={() => toggleProd(p.id)}
+                    style={{ background: selProd.includes(p.id) ? '#fffbeb' : 'white', border: `2px solid ${selProd.includes(p.id) ? '#d4af37' : '#e5e7eb'}`, borderRadius: 10, padding: 10, cursor: 'pointer', fontSize: 12 }}>
+                    <div style={{ fontWeight: 500, marginBottom: 4, fontSize: 11 }}>{p.nombre}</div>
+                    <div style={{ color: '#6b7280', fontSize: 10 }}>{p.categoria}</div>
+                    <div style={{ fontWeight: 700, color: '#1a1a2e', marginTop: 4 }}>{f$(p.pvp)}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)', position: isMobile ? 'static' : 'sticky', top: 0, alignSelf: 'start', order: isMobile ? -1 : 0 }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: '#1a1a2e', marginBottom: 10 }}>🧾 Tu Pack</h3>
           <input type="text" value={packName} onChange={e => setPackName(e.target.value)} placeholder="Nombre del pack…"
             style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #e5e7eb', padding: '8px 11px', borderRadius: 8, fontSize: 12.5, outline: 'none', marginBottom: 10 }} />
           <div style={{ minHeight: 60, maxHeight: 200, overflowY: 'auto', marginBottom: 12 }}>
-            {selSvcs.length === 0 ? <p style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', padding: 16 }}>Selecciona servicios →</p>
-              : selSvcs.map(s => <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12 }}><span>{s.nombre}</span><span style={{ fontWeight: 600 }}>{f$(s.pvp)}</span></div>)}
+            {selSvcs.length === 0 && selProds.length === 0
+              ? <p style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', padding: 16 }}>Selecciona ítems →</p>
+              : <>
+                  {selSvcs.map(s => <div key={`s-${s.id}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
+                    <span>✂️ {s.nombre}</span><span style={{ fontWeight: 600 }}>{f$(s.pvp)}</span>
+                  </div>)}
+                  {selProds.map(p => <div key={`p-${p.id}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f3f4f6', fontSize: 12 }}>
+                    <span>🛍️ {p.nombre}</span><span style={{ fontWeight: 600 }}>{f$(p.pvp)}</span>
+                  </div>)}
+                </>
+            }
           </div>
           <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 12 }}>
             {[['Precio normal:', f$(totalNormal)], ['Costo total:', f$(totalCosto)], ['Tiempo total:', `${totalTiempo} min`]].map(([l, v]) => (
@@ -662,7 +850,7 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
               <div style={{ fontSize: 12, color: mPack >= 0.3 ? '#059669' : '#d97706', marginTop: 3 }}>Margen: {fp(mPack)}</div>
             </div>
             {msg && <div style={{ fontSize: 12, color: msg.startsWith('✅') ? '#059669' : '#dc2626', marginBottom: 8, textAlign: 'center' }}>{msg}</div>}
-            <button onClick={guardar} style={{ width: '100%', padding: 10, background: sel.length >= 2 && packName.trim() ? '#d4af37' : '#e5e7eb', color: '#1a1a2e', border: 'none', borderRadius: 8, cursor: sel.length >= 2 ? 'pointer' : 'not-allowed', fontSize: 12.5, fontWeight: 700 }}>
+            <button onClick={guardar} style={{ width: '100%', padding: 10, background: (sel.length + selProd.length) >= 2 && packName.trim() ? '#d4af37' : '#e5e7eb', color: '#1a1a2e', border: 'none', borderRadius: 8, cursor: (sel.length + selProd.length) >= 2 ? 'pointer' : 'not-allowed', fontSize: 12.5, fontWeight: 700 }}>
               💾 Guardar Pack en la nube
             </button>
           </div>
@@ -683,7 +871,8 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
             {packs.map(pack => {
               const items = packItems.filter(pi => pi.pack_id === pack.id)
               const svcsInPack = items.map(pi => svcs.find(s => s.id === pi.servicio_id)).filter(Boolean) as Svc[]
-              const totalN = svcsInPack.reduce((s, v) => s + v.pvp, 0)
+              const prodsInPack = packProductos.filter(pp => pp.pack_id === pack.id).map(pp => productos.find(p => p.id === pp.producto_id)).filter(Boolean) as Producto[]
+              const totalN = svcsInPack.reduce((s, v) => s + v.pvp, 0) + prodsInPack.reduce((s, p) => s + p.pvp, 0)
               const precio = totalN * (1 - pack.descuento)
               return (
                 <div key={pack.id} style={{ border: '1.5px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fafafa' }}>
@@ -694,8 +883,13 @@ function Packs({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: R
                   </div>
                   <div style={{ marginBottom: 10 }}>
                     {svcsInPack.map(s => (
-                      <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#4b5563', padding: '2px 0', borderBottom: '1px solid #f3f4f6' }}>
-                        <span>• {s.nombre}</span><span>{f$(s.pvp)}</span>
+                      <div key={`s-${s.id}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#4b5563', padding: '2px 0', borderBottom: '1px solid #f3f4f6' }}>
+                        <span>✂️ {s.nombre}</span><span>{f$(s.pvp)}</span>
+                      </div>
+                    ))}
+                    {prodsInPack.map(p => (
+                      <div key={`p-${p.id}`} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#4b5563', padding: '2px 0', borderBottom: '1px solid #f3f4f6' }}>
+                        <span>🛍️ {p.nombre}</span><span>{f$(p.pvp)}</span>
                       </div>
                     ))}
                   </div>
@@ -1603,7 +1797,8 @@ const PAGE_INFO: Record<Page, { t: string; s: string }> = {
   dashboard: { t: 'Dashboard', s: 'Vista general del negocio · 2026' },
   servicios: { t: 'Catálogo de Servicios', s: 'Motor de costeo automático en tiempo real' },
   insumos: { t: 'Insumos y Materias Primas', s: 'Gestión de inventario y costos' },
-  packs: { t: 'Crear Packs — Venta Cruzada', s: 'Combina servicios y aumenta el ticket promedio' },
+  productos: { t: 'Productos para la Venta', s: 'Catálogo de productos retail · PVP y márgenes' },
+  packs: { t: 'Crear Packs — Venta Cruzada', s: 'Combina servicios y productos · Aumenta el ticket' },
   rentabilidad: { t: 'Análisis de Rentabilidad', s: 'KPIs, alertas y ranking por categoría' },
   registro: { t: 'Registro Mensual', s: 'Ventas reales vs proyectado · Exportar reporte' },
   multiagentes: { t: 'Análisis Multi-Agente IA', s: 'Contador → Administrador → Gerente · Flujo estratégico automático' },
@@ -1616,6 +1811,7 @@ export default function App() {
   const [svcs, setSvcs] = useState<Svc[]>([])
   const [ins, setIns] = useState<Ins[]>([])
   const [recs, setRecs] = useState<Rec[]>([])
+  const [productos, setProductos] = useState<Producto[]>([])
   const [dataLoading, setDataLoading] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -1642,17 +1838,18 @@ export default function App() {
 
   async function loadData() {
     setDataLoading(true)
-    const [s, i, r] = await Promise.all([
+    const [s, i, r, p] = await Promise.all([
       sb.from('servicios').select('*').order('id'),
       sb.from('insumos').select('*').order('id'),
       sb.from('recetas').select('*'),
+      sb.from('productos').select('*').order('id'),
     ])
-    setSvcs(s.data || []); setIns(i.data || []); setRecs(r.data || [])
+    setSvcs(s.data || []); setIns(i.data || []); setRecs(r.data || []); setProductos(p.data || [])
     setDataLoading(false)
   }
 
   async function doLogout() {
-    await sb.auth.signOut(); setSession(null); setSvcs([]); setIns([]); setRecs([])
+    await sb.auth.signOut(); setSession(null); setSvcs([]); setIns([]); setRecs([]); setProductos([])
   }
 
   if (loading) return (
@@ -1724,7 +1921,8 @@ export default function App() {
               {page === 'dashboard' && <Dashboard svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
               {page === 'servicios' && <Servicios svcs={svcs} setSvcs={setSvcs} ins={ins} recs={recs} />}
               {page === 'insumos' && <Insumos ins={ins} setIns={setIns} />}
-              {page === 'packs' && <Packs svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
+              {page === 'productos' && <Productos productos={productos} setProductos={setProductos} />}
+              {page === 'packs' && <Packs svcs={svcs} ins={ins} recs={recs} productos={productos} isMobile={isMobile} />}
               {page === 'rentabilidad' && <Rentabilidad svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
               {page === 'registro' && <RegistroMensual svcs={svcs} isMobile={isMobile} />}
               {page === 'multiagentes' && <MultiAgentes svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
