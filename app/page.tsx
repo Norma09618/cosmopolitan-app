@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient, type Session } from '@supabase/supabase-js'
+import * as XLSX from 'xlsx'
 
 const sb = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -46,6 +47,15 @@ function precioSug(ct: number) { return (ct / (1 - P.gob)) * (1 + P.iva) / (1 - 
 const f$ = (n: number) => `$${n.toFixed(2)}`
 const fp = (n: number) => `${(n * 100).toFixed(1)}%`
 const fint = (n: number) => `$${Math.round(n).toLocaleString()}`
+
+function exportarExcel(sheets: { nombre: string; filas: unknown[][] }[], archivo: string) {
+  const wb = XLSX.utils.book_new()
+  sheets.forEach(({ nombre, filas }) => {
+    const ws = XLSX.utils.aoa_to_sheet(filas)
+    XLSX.utils.book_append_sheet(wb, ws, nombre)
+  })
+  XLSX.writeFile(wb, `${archivo}.xlsx`)
+}
 
 // ── BADGE ─────────────────────────────────────────────────────────────────────
 function Bdg({ m, pvp }: { m: number; pvp: number }) {
@@ -268,7 +278,7 @@ function Dashboard({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; rec
 // ── SERVICIOS ─────────────────────────────────────────────────────────────────
 const SVC_CATS = ['Uñas','Estilismo','Tratamientos','Colorimetría','Keratina/Nanoplastia','Cortes','Depilación','Ondulación/Rizos','Maquillaje','Otro']
 
-function Servicios({ svcs, setSvcs, ins, recs }: { svcs: Svc[]; setSvcs: (s: Svc[]) => void; ins: Ins[]; recs: Rec[] }) {
+function Servicios({ svcs, setSvcs, ins, recs, productos }: { svcs: Svc[]; setSvcs: (s: Svc[]) => void; ins: Ins[]; recs: Rec[]; productos: Producto[] }) {
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('')
   const [est, setEst] = useState('')
@@ -330,8 +340,20 @@ function Servicios({ svcs, setSvcs, ins, recs }: { svcs: Svc[]; setSvcs: (s: Svc
           <select value={est} onChange={e => setEst(e.target.value)} style={{ border: '1px solid #e5e7eb', padding: '7px 11px', borderRadius: 8, fontSize: 12.5 }}>
             <option value="">Todos los estados</option><option>RENTABLE</option><option>REVISAR</option><option>PÉRDIDA</option>
           </select>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: '#6b7280' }}>{rows.length} servicios</span>
+            <button onClick={() => exportarExcel([
+                { nombre: 'Servicios', filas: [['Nombre','Categoría','PVP $','Tiempo (min)'], ...svcs.map(s => [s.nombre, s.categoria, s.pvp, s.tiempo_min])] },
+              ], 'Servicios_Cosmopolitan')}
+              style={{ padding: '7px 12px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              ⬇️ Servicios
+            </button>
+            <button onClick={() => exportarExcel([
+                { nombre: 'Productos', filas: [['Nombre','Categoría','PVP $','Costo $','Stock'], ...productos.map(p => [p.nombre, p.categoria, p.pvp, p.costo, p.stock_actual])] },
+              ], 'Productos_Cosmopolitan')}
+              style={{ padding: '7px 12px', background: '#f0fdf4', color: '#059669', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              ⬇️ Productos
+            </button>
             <button onClick={() => setModal({ open: true, mode: 'new', data: { pvp: 0, tiempo_min: 60, sd: 4, sm: 120 }, preview: null, err: '' })}
               style={{ padding: '7px 14px', background: '#0f3460', color: 'white', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 500, cursor: 'pointer' }}>
               + Agregar Servicio
@@ -560,7 +582,7 @@ function Insumos({ ins, setIns }: { ins: Ins[]; setIns: (i: Ins[]) => void }) {
 // ── PRODUCTOS ─────────────────────────────────────────────────────────────────
 const PROD_CATS = ['Shampoos','Acondicionadores','Máscaras','Tratamientos','Ceras y Styling','Sprays y Lacas','Aceites y Serums','Otros']
 
-function Productos({ productos, setProductos }: { productos: Producto[]; setProductos: (p: Producto[]) => void }) {
+function Productos({ productos, setProductos, svcs }: { productos: Producto[]; setProductos: (p: Producto[]) => void; svcs: Svc[] }) {
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('')
   const [modal, setModal] = useState<{ open: boolean; mode: 'new'|'edit'; data: Partial<Producto>; err: string }>({ open: false, mode: 'new', data: {}, err: '' })
@@ -610,11 +632,23 @@ function Productos({ productos, setProductos }: { productos: Producto[]; setProd
           <select value={cat} onChange={e => setCat(e.target.value)} style={{ border: '1px solid #e5e7eb', padding: '7px 11px', borderRadius: 8, fontSize: 12.5 }}>
             <option value="">Todas las categorías</option>{cats.map(c => <option key={c}>{c}</option>)}
           </select>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: '#6b7280' }}>{rows.length} productos</span>
+            <button onClick={() => exportarExcel([
+                { nombre: 'Productos', filas: [['Nombre','Categoría','PVP $','Costo $','Margen %','Stock'], ...productos.map(p => [p.nombre, p.categoria, p.pvp, p.costo, p.pvp > 0 ? +((p.pvp-p.costo)/p.pvp*100).toFixed(1) : 0, p.stock_actual])] },
+              ], 'Productos_Cosmopolitan')}
+              style={{ padding: '7px 12px', background: '#f0fdf4', color: '#059669', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              ⬇️ Productos
+            </button>
+            <button onClick={() => exportarExcel([
+                { nombre: 'Servicios', filas: [['Nombre','Categoría','PVP $','Tiempo (min)'], ...svcs.map(s => [s.nombre, s.categoria, s.pvp, s.tiempo_min])] },
+              ], 'Servicios_Cosmopolitan')}
+              style={{ padding: '7px 12px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              ⬇️ Servicios
+            </button>
             <button onClick={() => setModal({ open: true, mode: 'new', data: { pvp: 0, costo: 0, stock_actual: 0 }, err: '' })}
               style={{ padding: '7px 14px', background: '#d4af37', color: '#1a1a2e', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
-              + Agregar Producto
+              + Agregar
             </button>
           </div>
         </div>
@@ -1919,9 +1953,9 @@ export default function App() {
           ) : (
             <>
               {page === 'dashboard' && <Dashboard svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
-              {page === 'servicios' && <Servicios svcs={svcs} setSvcs={setSvcs} ins={ins} recs={recs} />}
+              {page === 'servicios' && <Servicios svcs={svcs} setSvcs={setSvcs} ins={ins} recs={recs} productos={productos} />}
               {page === 'insumos' && <Insumos ins={ins} setIns={setIns} />}
-              {page === 'productos' && <Productos productos={productos} setProductos={setProductos} />}
+              {page === 'productos' && <Productos productos={productos} setProductos={setProductos} svcs={svcs} />}
               {page === 'packs' && <Packs svcs={svcs} ins={ins} recs={recs} productos={productos} isMobile={isMobile} />}
               {page === 'rentabilidad' && <Rentabilidad svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
               {page === 'registro' && <RegistroMensual svcs={svcs} isMobile={isMobile} />}
