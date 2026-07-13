@@ -200,7 +200,80 @@ function Sidebar({ page, setPage, onLogout, email, isMobile, isOpen, onClose }: 
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; isMobile?: boolean }) {
+function Dashboard({ svcs, ins, recs, productos, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; productos: Producto[]; isMobile?: boolean }) {
+  const th = { background: '#0f3460', color: '#d4af37', padding: '10px 12px', fontSize: 11.5, fontWeight: 600, textAlign: 'left' as const }
+  const td = { padding: '8px 12px', fontSize: 12.5, borderBottom: '1px solid #f3f4f6' }
+
+  // ── Modo productos (sin servicios) ──
+  if (svcs.length === 0 && productos.length > 0) {
+    const cats = [...new Set(productos.map(p => p.categoria))].sort()
+    const totalValor = productos.reduce((s, p) => s + p.pvp * p.stock_actual, 0)
+    const totalCosto = productos.reduce((s, p) => s + p.costo * p.stock_actual, 0)
+    const totalUnidades = productos.reduce((s, p) => s + p.stock_actual, 0)
+    const avgMg = productos.filter(p => p.pvp > 0).reduce((s, p) => s + (p.pvp - p.costo) / p.pvp, 0) / (productos.filter(p => p.pvp > 0).length || 1)
+    const stockBajo = productos.filter(p => p.stock_actual > 0 && p.stock_actual <= 3).slice(0, 6)
+    const top5 = [...productos].sort((a, b) => b.pvp * b.stock_actual - a.pvp * a.stock_actual).slice(0, 5)
+    const kpis = [
+      { icon: '🛍️', bg: '#e0e7ff', label: 'Productos', val: productos.length.toString(), sub: `${cats.length} categorías` },
+      { icon: '📦', bg: '#fef9c3', label: 'Unidades en Stock', val: totalUnidades.toLocaleString(), sub: 'inventario total' },
+      { icon: '💵', bg: '#d1fae5', label: 'Valor Inventario', val: fint(totalValor), sub: 'a precio de venta', color: '#059669' },
+      { icon: '📋', bg: '#fee2e2', label: 'Costo Inventario', val: fint(totalCosto), sub: 'precio de costo', color: '#dc2626' },
+      { icon: '📈', bg: '#fce7f3', label: 'Margen Promedio', val: fp(avgMg), sub: 'sobre PVP', color: avgMg >= 0.3 ? '#059669' : '#d97706' },
+    ]
+    return (
+      <div style={{ padding: 24 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap: 14, marginBottom: 18 }}>
+          {kpis.map((k, i) => (
+            <div key={i} style={{ background: 'white', borderRadius: 12, padding: 18, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 11, background: k.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{k.icon}</div>
+                <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>{k.label}</div>
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: k.color || '#1a1a2e' }}>{k.val}</div>
+              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{k.sub}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 2fr', gap: 14 }}>
+          <div style={{ background: 'white', borderRadius: 12, padding: 16, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+            <h3 style={{ fontSize: 12, fontWeight: 700, color: '#dc2626', marginBottom: 10 }}>⚠️ Stock bajo (≤ 3 unidades)</h3>
+            {stockBajo.length === 0
+              ? <p style={{ fontSize: 12, color: '#10b981' }}>✅ Sin alertas de stock</p>
+              : stockBajo.map(p => (
+                <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 10px', borderRadius: 7, background: '#fef2f2', marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 500 }}>{p.nombre}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#dc2626' }}>{p.stock_actual} uds</span>
+                </div>
+              ))}
+          </div>
+          <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,.07)' }}>
+            <div style={{ background: '#1a1a2e', color: '#d4af37', padding: '9px 16px', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', borderRadius: '12px 12px 0 0' }}>🏆 Top 5 Productos por Valor en Stock</div>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
+                <thead><tr>{['Producto', 'PVP', 'Stock', 'Valor Total', 'Margen'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {top5.map(p => {
+                    const mg = p.pvp > 0 ? (p.pvp - p.costo) / p.pvp : 0
+                    return (
+                      <tr key={p.id}>
+                        <td style={{ ...td, fontWeight: 500, fontSize: 11 }}>{p.nombre}</td>
+                        <td style={td}>{f$(p.pvp)}</td>
+                        <td style={td}>{p.stock_actual}</td>
+                        <td style={{ ...td, fontWeight: 700 }}>{fint(p.pvp * p.stock_actual)}</td>
+                        <td style={{ ...td, fontWeight: 700, color: mg >= 0.3 ? '#059669' : mg >= 0.1 ? '#d97706' : '#dc2626' }}>{fp(mg)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Modo servicios (Cosmopolitan) ──
   const t = tasaMin(svcs)
   const computed = svcs.map(s => {
     const ci = costoIns(s.id, ins, recs)
@@ -222,8 +295,6 @@ function Dashboard({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; rec
     { icon: '📈', bg: '#d1fae5', label: 'Margen Promedio', val: fp(avgMg), sub: 'servicios con precio', color: '#059669' },
     { icon: '⚡', bg: '#fce7f3', label: 'Costo por Minuto', val: `$${t.toFixed(4)}`, sub: 'tasa costos fijos' },
   ]
-  const th = { background: '#0f3460', color: '#d4af37', padding: '10px 12px', fontSize: 11.5, fontWeight: 600, textAlign: 'left' as const }
-  const td = { padding: '8px 12px', fontSize: 12.5, borderBottom: '1px solid #f3f4f6' }
 
   return (
     <div style={{ padding: 24 }}>
@@ -1066,7 +1137,7 @@ function mdToHtml(text: string): string {
 // ── MULTI-AGENTES IA ──────────────────────────────────────────────────────────
 interface MktBase { avatar: string; tono: string; propuesta: string; redes: string; objetivos: string }
 
-function MultiAgentes({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; isMobile?: boolean }) {
+function MultiAgentes({ svcs, ins, recs, productos, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; productos: Producto[]; isMobile?: boolean }) {
   type Estado = 'idle' | 'contador' | 'administrador' | 'gerente' | 'marketing' | 'contenido' | 'publicidad' | 'listo'
   const [estado, setEstado] = React.useState<Estado>('idle')
   const [informes, setInformes] = React.useState({ contador: '', administrador: '', gerente: '', marketing: '', contenido: '', publicidad: '' })
@@ -1183,6 +1254,38 @@ function MultiAgentes({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; 
   const hasMkt = mkt.avatar.trim().length > 10 || mkt.objetivos.trim().length > 10
 
   function buildCtx() {
+    const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'
+    const brandSub = process.env.NEXT_PUBLIC_BRAND_SUBTITLE || 'Peluquerías'
+
+    if (svcs.length === 0 && productos.length > 0) {
+      const cats = [...new Set(productos.map(p => p.categoria))].sort()
+      const totalValor = productos.reduce((s, p) => s + p.pvp * p.stock_actual, 0)
+      const totalCosto = productos.reduce((s, p) => s + p.costo * p.stock_actual, 0)
+      const totalUnidades = productos.reduce((s, p) => s + p.stock_actual, 0)
+      const resCats = cats.map(cat => {
+        const ps = productos.filter(p => p.categoria === cat)
+        const val = ps.reduce((s, p) => s + p.pvp * p.stock_actual, 0)
+        return `  ${cat}: ${ps.length} productos, valor stock $${val.toFixed(0)}`
+      }).join('\n')
+      const top5 = [...productos].sort((a, b) => b.pvp * b.stock_actual - a.pvp * a.stock_actual).slice(0, 5)
+      const detalle = productos.map(p => {
+        const mg = p.pvp > 0 ? (p.pvp - p.costo) / p.pvp : 0
+        return `${p.nombre} | Cat:${p.categoria} | PVP:$${p.pvp} | Costo:$${p.costo} | Margen:${(mg*100).toFixed(1)}% | Stock:${p.stock_actual} uds`
+      }).join('\n')
+      return `${brandName} · ${brandSub} · ECUADOR
+Productos: ${productos.length} | Categorías: ${cats.length} | Unidades totales: ${totalUnidades}
+Valor inventario (PVP): $${totalValor.toFixed(2)} | Costo inventario: $${totalCosto.toFixed(2)}
+
+TOP 5 PRODUCTOS POR VALOR EN STOCK:
+${top5.map(p => `  ${p.nombre} | $${p.pvp} x ${p.stock_actual} uds = $${(p.pvp * p.stock_actual).toFixed(0)}`).join('\n')}
+
+VALOR POR CATEGORÍA:
+${resCats}
+
+DETALLE COMPLETO DE PRODUCTOS:
+${detalle}`
+    }
+
     const t = tasaMin(svcs)
     const totalMes = svcs.reduce((s, x) => s + x.pvp * x.frec_mes, 0)
     const cats = [...new Set(svcs.map(s => s.categoria))]
@@ -1198,7 +1301,7 @@ function MultiAgentes({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; 
       const mg = margen(s.pvp, ct)
       return `${s.nombre} | Cat:${s.categoria} | PVP:$${s.pvp} | Costo:$${ct.toFixed(2)} | Margen:${(mg*100).toFixed(1)}% | ${s.frec_mes}x/mes | Ing.mes:$${(s.pvp*s.frec_mes).toFixed(0)}`
     }).join('\n')
-    return `COSMOPOLITAN PELUQUERÍAS · ECUADOR
+    return `${brandName} · ${brandSub} · ECUADOR
 Servicios: ${svcs.length} | Insumos: ${ins.length} | Costo Fijo Mensual: $${CF.toFixed(2)}
 Ingreso potencial mensual: $${totalMes.toFixed(2)}
 
@@ -1286,7 +1389,8 @@ Objetivos de marketing: ${mkt.objetivos}`
     const fecha = new Date().toLocaleDateString('es-EC', { year: 'numeric', month: 'long', day: 'numeric' })
     const seccion = (emoji: string, titulo: string, cls: string, contenido: string) =>
       contenido ? `<div class="sec ${cls}"><div class="sec-head"><span class="emoji">${emoji}</span><div><h2>${titulo}</h2></div></div><div class="body">${mdToHtml(contenido)}</div></div>` : ''
-    w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Análisis Multi-Agente · Cosmopolitan</title>
+    const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'
+    w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Análisis Multi-Agente · ${brandName}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
 body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a1a2e;padding:32px 16px}
@@ -1326,7 +1430,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a1a2e;pa
 <div class="page">
 <div class="cover">
   <div class="sub">Análisis Estratégico Multi-Agente IA</div>
-  <h1>Cosmopolitan Peluquerías</h1>
+  <h1>${process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'}</h1>
   <div class="fecha">Ecuador · Generado el ${fecha} · ${hasMkt ? '6 agentes IA' : '3 agentes IA'}</div>
 </div>
 <div class="gold-bar"></div>
@@ -1339,8 +1443,8 @@ ${seccion('📅', 'PLANIFICADOR DE CONTENIDO', 'con', informes.contenido)}
 ${seccion('📣', 'ESPECIALISTA EN PUBLICIDAD', 'pub', informes.publicidad)}
 </div>
 <div class="footer">
-  <span>Cosmo IA · NS Consultoría Digital</span>
-  <span>cosmopolitan-app.vercel.app</span>
+  <span>${process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'} IA · NS Consultoría Digital</span>
+  <span>Generado el ${fecha}</span>
 </div>
 </div>
 <script>window.onload=function(){setTimeout(function(){window.print()},800)}</script>
@@ -1534,7 +1638,8 @@ interface MsgIA { role: 'user' | 'assistant'; content: string }
 
 function AsistenteIA({ svcs, ins, recs, isMobile }: { svcs: Svc[]; ins: Ins[]; recs: Rec[]; isMobile?: boolean }) {
   const [open, setOpen] = useState(false)
-  const [msgs, setMsgs] = useState<MsgIA[]>([{ role: 'assistant', content: '¡Hola! Soy **Cosmo IA** 🤖, tu asistente de negocios. Puedo analizar los datos de Cosmopolitan y ayudarte a tomar mejores decisiones. ¿En qué te puedo ayudar hoy?' }])
+  const brandIA = process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'
+  const [msgs, setMsgs] = useState<MsgIA[]>([{ role: 'assistant', content: `¡Hola! Soy el asistente IA de **${brandIA}** 🤖. Puedo analizar tus datos y ayudarte a tomar mejores decisiones de negocio. ¿En qué te puedo ayudar hoy?` }])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -1629,7 +1734,7 @@ ${computed.map(s => `  - ${s.nombre} | ${s.categoria} | PVP: ${f$(s.pvp)} | Cost
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#0f3460', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>🤖</div>
             <div style={{ minWidth: 0 }}>
               <div style={{ color: '#d4af37', fontWeight: 700, fontSize: 14 }}>Cosmo IA</div>
-              <div style={{ color: '#9ca3af', fontSize: 11 }}>Asistente de negocios · Cosmopolitan</div>
+              <div style={{ color: '#9ca3af', fontSize: 11 }}>Asistente de negocios · {process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'}</div>
             </div>
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
@@ -1956,14 +2061,14 @@ export default function App() {
             </div>
           ) : (
             <>
-              {page === 'dashboard' && <Dashboard svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
+              {page === 'dashboard' && <Dashboard svcs={svcs} ins={ins} recs={recs} productos={productos} isMobile={isMobile} />}
               {page === 'servicios' && <Servicios svcs={svcs} setSvcs={setSvcs} ins={ins} recs={recs} productos={productos} />}
               {page === 'insumos' && <Insumos ins={ins} setIns={setIns} />}
               {page === 'productos' && <Productos productos={productos} setProductos={setProductos} svcs={svcs} />}
               {page === 'packs' && <Packs svcs={svcs} ins={ins} recs={recs} productos={productos} isMobile={isMobile} />}
               {page === 'rentabilidad' && <Rentabilidad svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
               {page === 'registro' && <RegistroMensual svcs={svcs} isMobile={isMobile} />}
-              {page === 'multiagentes' && <MultiAgentes svcs={svcs} ins={ins} recs={recs} isMobile={isMobile} />}
+              {page === 'multiagentes' && <MultiAgentes svcs={svcs} ins={ins} recs={recs} productos={productos} isMobile={isMobile} />}
             </>
           )}
         </div>
