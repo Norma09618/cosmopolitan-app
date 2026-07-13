@@ -98,8 +98,8 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
     <div style={{ background: '#1a1a2e', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 380, maxWidth: '95vw' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 28, fontWeight: 900, color: '#d4af37', letterSpacing: '.04em' }}>COSMOPOLITAN</div>
-          <div style={{ color: '#9ca3af', fontSize: 13, marginTop: 6 }}>Peluquerías · Sistema de Gestión</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: '#d4af37', letterSpacing: '.04em' }}>{process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'}</div>
+          <div style={{ color: '#9ca3af', fontSize: 13, marginTop: 6 }}>{process.env.NEXT_PUBLIC_BRAND_SUBTITLE || 'Peluquerías · Sistema de Gestión'}</div>
         </div>
         <div style={{ background: 'white', borderRadius: 16, padding: 32, boxShadow: '0 20px 60px rgba(0,0,0,.4)' }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px' }}>Iniciar sesión</h2>
@@ -169,8 +169,8 @@ function Sidebar({ page, setPage, onLogout, email, isMobile, isOpen, onClose }: 
       <div style={{ background: '#1a1a2e', width: 230, flexShrink: 0, display: 'flex', flexDirection: 'column', height: isMobile ? '100dvh' as string : '100vh', ...drawer }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ color: '#d4af37', fontSize: 17, fontWeight: 800 }}>COSMOPOLITAN</div>
-            <div style={{ color: '#6b7280', fontSize: 11, marginTop: 3 }}>Peluquerías · Sistema de Gestión</div>
+            <div style={{ color: '#d4af37', fontSize: 17, fontWeight: 800 }}>{process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'}</div>
+            <div style={{ color: '#6b7280', fontSize: 11, marginTop: 3 }}>{process.env.NEXT_PUBLIC_BRAND_SUBTITLE || 'Peluquerías · Sistema de Gestión'}</div>
           </div>
           {isMobile && (
             <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: 20, cursor: 'pointer', padding: 4, lineHeight: 1 }}>✕</button>
