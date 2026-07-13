@@ -838,9 +838,13 @@ function Packs({ svcs, ins, recs, productos, isMobile }: { svcs: Svc[]; ins: Ins
             </>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-                <button onClick={() => setFilterCatProd('')} style={{ padding: '5px 10px', background: !filterCatProd ? '#0f3460' : 'white', color: !filterCatProd ? 'white' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>Todos</button>
-                {catsProd.map(c => <button key={c} onClick={() => setFilterCatProd(c === filterCatProd ? '' : c)} style={{ padding: '5px 10px', background: filterCatProd === c ? '#d4af37' : 'white', color: filterCatProd === c ? '#1a1a2e' : '#374151', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>{c}</button>)}
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+                <select value={filterCatProd} onChange={e => setFilterCatProd(e.target.value)}
+                  style={{ flex: 1, border: '1px solid #e5e7eb', borderRadius: 8, padding: '6px 10px', fontSize: 12, color: '#374151', outline: 'none', background: 'white' }}>
+                  <option value=''>Todas las categorías ({productos.length})</option>
+                  {catsProd.map(c => <option key={c} value={c}>{c} ({productos.filter(p => p.categoria === c).length})</option>)}
+                </select>
+                {filterCatProd && <button onClick={() => setFilterCatProd('')} style={{ padding: '6px 10px', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: 8, fontSize: 11, cursor: 'pointer' }}>✕ Limpiar</button>}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(3,1fr)', gap: 8, maxHeight: 380, overflowY: 'auto' }}>
                 {filteredProd.map(p => (
