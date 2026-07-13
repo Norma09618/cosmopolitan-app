@@ -1358,25 +1358,23 @@ Objetivos de marketing: ${mkt.objetivos}`
         `${ctx}\n\n=== CONTADOR ===\n${rC}\n\n=== ADMINISTRADOR ===\n${rA}`)
       setInformes(p => ({ ...p, gerente: rG }))
 
-      if (hasMkt) {
-        setEstado('marketing')
-        const rM = await llamar('ESTRATEGA DE MARKETING',
-          'Con el análisis del negocio y la base de conocimiento de marca, genera: 1) Posicionamiento estratégico diferenciador, 2) Los 3 servicios estrella para comunicar (basado en rentabilidad+demanda), 3) Propuesta de valor por servicio para cada red social, 4) Temporadas y momentos clave del año para campañas, 5) Presupuesto estimado de marketing recomendado.',
-          `${ctx}\n\n=== ANÁLISIS GERENTE ===\n${rG}\n\n${mktCtx}`)
-        setInformes(p => ({ ...p, marketing: rM }))
+      setEstado('marketing')
+      const rM = await llamar('ESTRATEGA DE MARKETING',
+        'Con el análisis del negocio, genera: 1) Posicionamiento estratégico diferenciador, 2) Los 3 productos/servicios estrella para comunicar (basado en rentabilidad+demanda), 3) Propuesta de valor para cada red social, 4) Temporadas y momentos clave del año para campañas, 5) Presupuesto estimado de marketing recomendado.',
+        `${ctx}\n\n=== ANÁLISIS GERENTE ===\n${rG}${mktCtx ? '\n\n' + mktCtx : ''}`)
+      setInformes(p => ({ ...p, marketing: rM }))
 
-        setEstado('contenido')
-        const rCo = await llamar('PLANIFICADOR DE CONTENIDO DIGITAL',
-          'Con la estrategia de marketing, crea: 1) Calendario de contenido semanal (4 semanas), 2) Ideas de posts para Instagram (antes/después, tips, promociones), 3) Ideas para TikTok/Reels (tutoriales, behind the scenes), 4) Frecuencia y horarios óptimos por red, 5) Hashtags estratégicos recomendados.',
-          `${mktCtx}\n\n=== ESTRATEGIA MARKETING ===\n${rM}\n\n${ctx}`)
-        setInformes(p => ({ ...p, contenido: rCo }))
+      setEstado('contenido')
+      const rCo = await llamar('PLANIFICADOR DE CONTENIDO DIGITAL',
+        'Con la estrategia de marketing, crea: 1) Calendario de contenido semanal (4 semanas), 2) Ideas de posts para Instagram (fotos de productos, tips, promociones), 3) Ideas para TikTok/Reels (unboxing, behind the scenes, outfits), 4) Frecuencia y horarios óptimos por red, 5) Hashtags estratégicos recomendados.',
+        `${mktCtx ? mktCtx + '\n\n' : ''}=== ESTRATEGIA MARKETING ===\n${rM}\n\n${ctx}`)
+      setInformes(p => ({ ...p, contenido: rCo }))
 
-        setEstado('publicidad')
-        const rP = await llamar('ESPECIALISTA EN PUBLICIDAD Y CAMPAÑAS',
-          'Con el plan de contenido y estrategia, diseña: 1) 3 campañas publicitarias específicas con nombre, objetivo y copy, 2) Textos de anuncios listos para usar (Instagram Ads / Facebook Ads), 3) Ofertas y promociones estratégicas basadas en la rentabilidad real, 4) Ideas de campaña por temporada/fecha especial, 5) Métricas de éxito esperadas por campaña.',
-          `${mktCtx}\n\n=== ESTRATEGIA ===\n${rM}\n\n=== CONTENIDO ===\n${rCo}\n\n${ctx}`)
-        setInformes(p => ({ ...p, publicidad: rP }))
-      }
+      setEstado('publicidad')
+      const rP = await llamar('ESPECIALISTA EN PUBLICIDAD Y CAMPAÑAS',
+        'Con el plan de contenido y estrategia, diseña: 1) 3 campañas publicitarias específicas con nombre, objetivo y copy, 2) Textos de anuncios listos para usar (Instagram Ads / Facebook Ads), 3) Ofertas y promociones estratégicas basadas en la rentabilidad real, 4) Ideas de campaña por temporada/fecha especial, 5) Métricas de éxito esperadas por campaña.',
+        `${mktCtx ? mktCtx + '\n\n' : ''}=== ESTRATEGIA ===\n${rM}\n\n=== CONTENIDO ===\n${rCo}\n\n${ctx}`)
+      setInformes(p => ({ ...p, publicidad: rP }))
       setEstado('listo')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error desconocido')
