@@ -1256,6 +1256,7 @@ function MultiAgentes({ svcs, ins, recs, productos, isMobile }: { svcs: Svc[]; i
   function buildCtx() {
     const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'
     const brandSub = process.env.NEXT_PUBLIC_BRAND_SUBTITLE || 'Peluquerías'
+    const brandCountry = process.env.NEXT_PUBLIC_BRAND_COUNTRY || 'ECUADOR'
 
     if (svcs.length === 0 && productos.length > 0) {
       const cats = [...new Set(productos.map(p => p.categoria))].sort()
@@ -1272,7 +1273,7 @@ function MultiAgentes({ svcs, ins, recs, productos, isMobile }: { svcs: Svc[]; i
         const mg = p.pvp > 0 ? (p.pvp - p.costo) / p.pvp : 0
         return `${p.nombre} | Cat:${p.categoria} | PVP:$${p.pvp} | Costo:$${p.costo} | Margen:${(mg*100).toFixed(1)}% | Stock:${p.stock_actual} uds`
       }).join('\n')
-      return `${brandName} · ${brandSub} · ECUADOR
+      return `${brandName} · ${brandSub} · ${brandCountry}
 Productos: ${productos.length} | Categorías: ${cats.length} | Unidades totales: ${totalUnidades}
 Valor inventario (PVP): $${totalValor.toFixed(2)} | Costo inventario: $${totalCosto.toFixed(2)}
 
@@ -1301,7 +1302,7 @@ ${detalle}`
       const mg = margen(s.pvp, ct)
       return `${s.nombre} | Cat:${s.categoria} | PVP:$${s.pvp} | Costo:$${ct.toFixed(2)} | Margen:${(mg*100).toFixed(1)}% | ${s.frec_mes}x/mes | Ing.mes:$${(s.pvp*s.frec_mes).toFixed(0)}`
     }).join('\n')
-    return `${brandName} · ${brandSub} · ECUADOR
+    return `${brandName} · ${brandSub} · ${brandCountry}
 Servicios: ${svcs.length} | Insumos: ${ins.length} | Costo Fijo Mensual: $${CF.toFixed(2)}
 Ingreso potencial mensual: $${totalMes.toFixed(2)}
 
@@ -1460,7 +1461,7 @@ ${seccion('📣', 'ESPECIALISTA EN PUBLICIDAD', 'pub', informes.publicidad)}
     { key: 'contenido' as const, label: 'Contenido', emoji: '📅', color: '#0891b2', bg: '#ecfeff', desc: 'Plan de contenido' },
     { key: 'publicidad' as const, label: 'Publicidad', emoji: '📣', color: '#be185d', bg: '#fdf2f8', desc: 'Campañas y anuncios' },
   ]
-  const agentesActivos = hasMkt ? todosAgentes : todosAgentes.slice(0, 3)
+  const agentesActivos = todosAgentes
   const etiqueta: Record<string, string> = {
     idle: '', contador: '📊 Contador analizando finanzas...', administrador: '⚙️ Administrador revisando operaciones...',
     gerente: '👔 Gerente tomando decisiones...', marketing: '🎯 Estratega de marketing construyendo posicionamiento...',

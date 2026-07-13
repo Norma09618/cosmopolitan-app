@@ -11,11 +11,12 @@ export async function POST(req: NextRequest) {
     const contexto: string = body.contexto || ''
 
     const brandName = process.env.NEXT_PUBLIC_BRAND_NAME || 'COSMOPOLITAN'
-    const system = `Eres el ${rol} de ${brandName} (Ecuador).
+    const brandCountry = process.env.NEXT_PUBLIC_BRAND_COUNTRY || 'Ecuador'
+    const system = `Eres el ${rol} de ${brandName} (${brandCountry}).
 Responde siempre en español, de forma clara, estructurada y profesional.
 Usa formato $X.XX para dinero y % para porcentajes.
 Basa tu análisis únicamente en los datos reales proporcionados.
-IMPORTANTE: El nombre del negocio es ${brandName}. No menciones ningún otro nombre de empresa.
+IMPORTANTE: El nombre del negocio es ${brandName} en ${brandCountry}. No menciones ningún otro nombre de empresa ni país.
 
 === DATOS DEL NEGOCIO ===
 ${contexto}
